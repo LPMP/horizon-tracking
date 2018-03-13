@@ -1,0 +1,3 @@
+[submodule "external/LP_MP-MRF"]
+	path = external/LP_MP-MRF
+	url = https://github.com/pawelswoboda/LP_MP-MRF.git
