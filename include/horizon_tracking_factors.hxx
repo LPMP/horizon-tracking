@@ -10,35 +10,118 @@ namespace LP_MP {
             template<typename ITERATOR>
             max_factor(ITERATOR size_begin, ITERATOR size_end)
             :
-                potential(size_begin, size_end),
-                primal(std::distance(size_begin, size_end))
+                max_potential(size_begin, size_end),
+                linear_potential(size_begin, size_end),
+                primal(std::distance(size_begin, size_end)),
+                max_potential_sorted(max_potential.total_size())
         {}
-            
+
+        template<typename MATRIX>
+        void assign_max_potential_matrix(const INDEX entry, const MATRIX& costs)
+        {
+            INDEX c = 0;
+            for(INDEX i=0; i<costs.dim1(); ++i) {
+                for(INDEX j=0; j<costs.dim2(); ++j) {
+                    max_potential[entry][c++] = costs(i,j);
+                }
+            }
+        }
+
             REAL EvaluatePrimal() const
             {
-                REAL cost = 0.0;
+                REAL linear_cost = 0.0;
+                REAL max_cost = -std::numeric_limits<REAL>::infinity();
                 for(INDEX i=0; i<potential.size(); ++i) {
-                    cost += potential[i][ primal[i] ];
+                    linear_cost += linear_potential[i][ primal[i] ];
+                    max_cost = std::max(max_potential[i][ primal[i] ], max_cost);
                 }
-                return cost;
+                return linear_cost + max_cost;
+            }
+
+            INDEX no_variables() const { return max_potential.size(); }
+            INDEX no_labels(const INDEX i) const { return max_potential[i].size(); }
+
+            template<typename LAMBDA>
+            void combinatorial_search(LAMBDA f) const
+            {
+                std::vector<bool> variable_covered(max_potential.size(), false);
+                INDEX no_variables_covered = 0; 
+                std::vector<REAL> linear_cost(no_variables(), 0.0);
+
+                REAL lb = std::numeric_limits<REAL>::infinity();
+                REAL total_linear_cost = 0.0;
+
+                for(const auto& e : max_potential_sorted) {
+                    const REAL cost = e.cost;
+                    const REAL var = e.var;
+                    const REAL label = e.label;
+                    if(linear_potential[var][label] < linear_cost[var]) {
+                        linear_cost[var] = linear_potential[var][label];
+                        total_linear_cost += -linear_cost[var] + linear_potential[var][label]; 
+                    }
+                    if(variable_covered[var] == false) {
+                        variable_covered[var] = true;
+                        f(lb, var, label);
+                        no_variables_covered++;
+                    }
+                    if(cost + total_linear_cost < lb) {
+                        if(no_variables_covered == no_variables()) {
+                            lb = cost + total_linear_cost;
+                        }
+                        f(lb, var, label);
+                    }
+                }
+
+                return lb; 
+            }
+
+            void MaximizePotentialAndComputePrimal()
+            {
+                auto record_primal = [&primal](const REAL lb, const INDEX var, const INDEX label) {
+                    primal[var] = label;
+                };
+
+                combinatorial_search(record_primal);
             }
 
             REAL LowerBound() const
             {
-                REAL lb = -std::numeric_limits<REAL>::infinity();
-                for(INDEX i=0; i<potential.size(); ++i) {
-                    const REAL best_local = std::min(potential[i].begin(), potential[i].end());
-                    lb = std::max(best_local, lb);
-                }
-
-                return lb;
+                auto no_op = [](auto, auto, auto) {};
+                return combinatorial_search(no_op);
             }
 
-            auto export_variables() { std::tie(potential); }
+            void sort_max_potentials()
+            {
+                INDEX c=0;
+                for(INDEX var=0; var<max_potential.size(); ++var) {
+                    for(INDEX label=0; label<max_potential[i].size(); ++label) {
+                        max_potential[c++] = {max_potential[var][label], var, label};
+                    }
+                }
+                std::sort(max_potential_sorted.begin(), max_potential_sorted.end(), [](auto& a, auto& b) { return a.cost < b.cost; });
+            }
+
+            void init_primal()
+            {
+                std::fill(primal.begin(), primal.end(), std::numeric_limits<INDEX>::max());
+            }
+
+            auto export_variables() { std::tie(max_potential, linear_potential); }
+
+            two_dim_variable_array<REAL> max_potential;
+            two_dim_variable_array<REAL> linear_potential;
 
         private:
-            two_dim_variable_array<REAL> potential;
-            vector<INDEX> primal;
+            mutable REAL max_potential;
+            mutable bool max_potential_valid = false;
+            vector<INDEX> primal; 
+
+            struct max_potential_entry {
+                REAL cost;
+                INDEX variable;
+                INDEX label;
+            }
+            vector<max_potetial_entry> max_potential_sorted;
 
     };
 
@@ -50,7 +133,7 @@ namespace LP_MP {
             void RepamRight(FACTOR& r, const MSG& msgs)
             {
                 for(INDEX i=0; i<r[entry].size(); ++i) {
-                    r[entry][i] += msgs[i];
+                    r.linear_potential[entry][i] += msgs[i];
                 }
             }
 
@@ -58,8 +141,8 @@ namespace LP_MP {
             void RepamLeft(FACTOR& l, const MSG& msgs)
             {
                 INDEX c=0;
-                for(i=0; i<l.dim1(); ++i) {
-                    for(j=0; j<l.dim2(); ++j) {
+                for(INDEX i=0; i<l.dim1(); ++i) {
+                    for(INDEX j=0; j<l.dim2(); ++j) {
                         l.cost(i,j) += msgs[c++];
                     }
                 } 
@@ -70,17 +153,123 @@ namespace LP_MP {
             {
                 vector<REAL> m(l.size());
                 INDEX c=0;
-                for(i=0; i<l.dim1(); ++i) {
-                    for(j=0; j<l.dim2(); ++j) {
+                for(INDEX i=0; i<l.dim1(); ++i) {
+                    for(INDEX j=0; j<l.dim2(); ++j) {
                         m[c++] = l(i,j);
                     }
                 }
                 msg -= omega*m; 
             }
 
+            template<typename RIGHT_FACTOR, typename MSG>
+            void send_message_to_left(const RIGHT_FACTOR& r, MSG& msg, const REAL omega = 1.0)
+            {
+                assert(false);
+            }
+
+            template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
+            bool ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
+            {
+                const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
+                if(left_primal < l.size()) {
+                    const bool changed = (left_primal != r.primal[entry]);
+                    l.primal()[0] = r.primal[entry] / l.dim1();
+                    l.primal()[1] = r.primal[entry] % l.dim1();
+                    return changed;
+                } else {
+                    return false;
+                }
+            }
+
+            template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
+            bool ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
+            {
+                const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
+                if(r.primal() < r.no_labels(entry)) {
+                    const bool changed = (left_primal != r.primal[entry]);
+                    r.primal[entry] = left_primal;
+                    return changed;
+                } else {
+                    return false;
+                }
+            }
+
+            template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
+            bool CheckPrimalConsistency(const LEFT_FACTOR& l, const RIGHT_FACTOR& r) const
+            {
+                const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
+                return left_primal == r.primal[entry];
+            } 
+
+
         private:
             const INDEX entry;
     };
+
+class max_potential_on_chain {
+public:
+    template<typename MRF_CONSTRUCTOR, typename ITERATOR>
+    void setup_mcf(MFC_CONSTRUCTOR& mrf, ITERATOR var_begin, ITERATOR var_end)
+    {
+        INDEX no_nodes = 0;
+        INDEX no_edges = mrf.GetNumberOfLabels(*var_begin);
+        for(auto it=var_begin; std::next(it)!=var_end; ++it) {
+            const INDEX i = *it;
+            const INDEX j = *std::next(it);
+            no_nodes += mrf.GetNumberOfLabels(j);
+            no_edges += mrf.GetNumberOfLabels(i) * mrf.GetNumberOfLabels(j);
+        }
+        // for additional edges that require one unit to be sent
+        no_edges += mrf.GetNumberOfLabels(*var_begin);
+
+        MCF::SSP mcf(no_nodes, no_edges);
+
+        INDEX node_counter = 0;
+        for(auto it=var_begin; std::next(it)!=var_end; ++it) {
+            const INDEX i = *it;
+            const INDEX j = *std::next(it);
+            const INDEX no_labels_i = mrf.GetNumberOfLabels(i);
+            const INDEX no_labels_j = mrf.GetNumberOfLabels(j);
+
+            if(i<j) {
+                for(INDEX xi=0; xi<mrf.GetNumberOfLabels(i); ++xi) {
+                    for(INDEX xj=0; xj<mrf.GetNumberOfLabels(j); ++xj) {
+                        mcf.add_edge(node_counter + xi, node_counter + no_labels_i + xj, 0, 1, 0.0);
+                    }
+                }
+            } else {
+                assert(j<i);
+                for(INDEX xj=0; xj<mrf.GetNumberOfLabels(j); ++xj) {
+                    for(INDEX xi=0; xi<mrf.GetNumberOfLabels(i); ++xi) {
+                        mcf.add_edge(node_counter + xi, node_counter + no_labels_i + xj, 0, 1, 0.0);
+                    }
+                }
+            }
+            node_counter += no_labels_i;
+        }
+
+        // add excesses:
+        {
+            const INDEX first_node = *var_begin;
+            const INDEX no_labels = mrf.GetNumberOfLabels(first_node);
+
+
+        }
+    }
+
+    REAL LowerBound() const
+    {
+
+    }
+private:
+    struct max_potential_entry {
+        REAL value;
+        REAL cost;
+        const INDEX i,j; // pairwise potential variables
+        const INDEX l1,l2; // pairwise potential labels 
+    }
+    vector<max_potential_entry> max_potential;
+};
 
 }
 
