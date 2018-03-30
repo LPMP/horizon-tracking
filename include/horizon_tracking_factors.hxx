@@ -43,7 +43,7 @@ namespace LP_MP {
             INDEX no_labels(const INDEX i) const { return max_potential[i].size(); }
 
             template<typename LAMBDA>
-            void combinatorial_search(LAMBDA f) const
+            REAL combinatorial_search(LAMBDA f) const
             {
                 std::vector<bool> variable_covered(max_potential.size(), false);
                 INDEX no_variables_covered = 0; 
@@ -131,31 +131,38 @@ namespace LP_MP {
             template<typename MRF_CONSTRUCTOR, typename ITERATOR>
             void setup_mcf(MFC_CONSTRUCTOR& mrf, ITERATOR var_begin, ITERATOR var_end)
             {
-                INDEX no_nodes = 0;
+                INDEX no_mini_nodes = 0;
+                INDEX no_nodes = std::distance(var_begin, var_end);
                 INDEX no_edges = 0;
+
+                 // For source node:
                 INDEX no_labels_first = mrf.GetNumberOfLabels(*var_begin); 
-                no_edges += no_labels_first; // for source node
-                
+                no_edges += no_labels_first;
+                no_mini_nodes += 1;
+
+                // For nodes of the chain:
                 for(auto it=var_begin; std::next(it)!=var_end; ++it) {
                     const INDEX i = *it;
                     const INDEX j = *std::next(it);
-                    no_nodes += mrf.GetNumberOfLabels(j);
+                    no_mini_nodes += mrf.GetNumberOfLabels(j);
                     no_edges += mrf.GetNumberOfLabels(i) * mrf.GetNumberOfLabels(j);
                 }
 
-                INDEX no_labels_end = mrf.GetNumberOfLabels(*(var_end - 1)); //TODO: Check var_end if end inclusive
-                no_edges +=  no_labels_end; // for terminal node
+                // For terminal node:
+                INDEX no_labels_end = mrf.GetNumberOfLabels(*(var_end)); //TODO: Check var_end if end inclusive
+                no_edges +=  no_labels_end;
+                no_mini_nodes += 1;
 
-                MCF::SSP mcf(no_nodes, no_edges);
+                MCF::SSP mcf(no_mini_nodes, no_edges);
 
-                INDEX node_counter = 0;
+                INDEX mini_node_counter = 0;
                 
                 //Adding additional edges from source to first node:
                 for (INDEX xj = 0; xj < no_labels_first; ++xj){
                     mcf.add_edge(0, xj, 0, 1, 0.0);
                 }
 
-                node_counter += no_labels_first;
+                mini_node_counter += no_labels_first;
 
                 for(auto it=var_begin; std::next(it)!=var_end; ++it) {
                     const INDEX i = *it;
@@ -165,23 +172,51 @@ namespace LP_MP {
                     if(i<j) {
                         for(INDEX xi=0; xi<mrf.GetNumberOfLabels(i); ++xi) {
                             for(INDEX xj=0; xj<mrf.GetNumberOfLabels(j); ++xj) {
-                                mcf.add_edge(node_counter + xi, node_counter + no_labels_i * xj, 0, 1, 0.0);
+                                mcf.add_edge(mini_node_counter + xi, mini_node_counter + no_labels_i * xj, 0, 1, 0.0);
                             }
                         }
                     } else {
                         assert(j<i);
                         for(INDEX xj=0; xj<mrf.GetNumberOfLabels(j); ++xj) {
                             for(INDEX xi=0; xi<mrf.GetNumberOfLabels(i); ++xi) {
-                                mcf.add_edge(node_counter + xi, node_counter + no_labels_i * xj, 0, 1, 0.0);
+                                mcf.add_edge(mini_node_counter + xi, mini_node_counter + no_labels_i * xj, 0, 1, 0.0);
                             }
                         }
                     }
-                    node_counter += no_labels_i;
+                    mini_node_counter += no_labels_i;
                 }
 
-                //Adding additional edges from last node to terminal:
+                // Adding additional edges from last node to terminal:
                 for (INDEX xi = 0; xi < no_labels_end; ++xi){
-                    mcf.add_edge(node_counter + xi, no_nodes - 1, 0, 1, 0.0);
+                    mcf.add_edge(mini_node_counter + xi, no_mini_nodes - 1, 0, 1, 0.0);
+                }
+
+                REAL best_solution_cost = INFINITY;
+                vector<INDEX> solution;                 // Stores the optimal label for each node index
+                std::map<INDEX, INDEX> predecessors;    // For each mini-node, stores the incoming arc which minimizes the distance to that mini-node
+                vector<INDEX> distances_from_source(mini_node_counter, INFINITY);
+                distances_from_source[0] = 0;           // Source node is 0 distance away from itself
+                vector<INDEX> sorting_order = GetPairwisePotsSortingOrder(all_pairwise_pots);
+                std::queue<std::pair<INDEX, INDEX>> nodes_to_update;
+                for(const auto& current_edge_index : sorting_order)
+                {
+                    nodes_to_update.push(all_pairwise_pots[current_edge_index].index_mini_node1, current_edge_index);
+                    all_pairwise_pots[current_edge_index].added = true;         // True allows the arc to be considered for shortest path
+                    bool found_path = UpdateDistances(nodes_to_update, all_pairwise_pots, distances_from_source, predecessors);
+                    if (found_path)
+                    {
+                        REAL current_solution_cost = all_pairwise_pots[current_edge_index].max_pot + distances_from_source[mini_node_counter - 1];
+                        if (current_solution_cost < best_solution_cost)
+                        {
+                            INDEX current_mini_node_index = mini_node_counter - 1;  // Assuming that the terminal node is the ending node.
+
+                            for (INDEX i = no_nodes - 1; i >= 0; i--)
+                            {
+                                solution[i] = all_pairwise_pots[predecessors[current_mini_node_index]].l1;
+                                current_mini_node_index = all_pairwise_pots[predecessors[current_mini_node_index]].index_mini_node1;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -189,14 +224,72 @@ namespace LP_MP {
             {
 
             }
+
+            vector<INDEX> GetPairwisePotsSortingOrder(const vector<max_linear_pairwise_pot>& pots) 
+            {
+                vector<INDEX> idx(pots.size());
+                std::iota(idx.begin(), idx.end(), 0);
+
+                std::sort(idx.begin(), idx.end(),
+                    [&pots](INDEX i1, INDEX i2) {return pots[i1].max_pot < pots[i2].max_pot;});
+
+                return idx;
+            }
+
+            // TODO: Take unary cost into account as well
+            bool UpdateDistances(std::queue<std::pair<INDEX, INDEX>>& nodes_to_update, const vector<max_linear_pairwise_pot>& all_pairwise_pots, vector<REAL>& distances_from_source, std::map<INDEX, INDEX>& predecessors)
+            {
+                bool reached_terminal = false;
+                while(!nodes_to_update.empty())
+                {
+                    std::pair<INDEX, INDEX> currentPair = nodes_to_update.front();
+                    nodes_to_update.pop();
+                    INDEX node_to_update = currentPair.first;
+                    INDEX edge_index_start = currentPair.second;
+                    bool anyAdded = false;
+
+                    for (INDEX edge_index = edge_index_start; edge_index < all_pairwise_pots.size(); edge_index++)
+                    {
+                        // Do not consider this potential as it has not been added through sorting yet.
+                        if (!all_pairwise_pots[edge_index].is_added)
+                            continue;
+
+                        // Assuming that the pairwise pots are stored contiguously for each left node.
+                        if (all_pairwise_pots[edge_index].index_mini_node1 != node_to_update)
+                        {
+                            if (!anyAdded)
+                                continue;
+                            break;
+                        }
+                        anyAdded = true;
+                        max_linear_pairwise_pot current_pot = all_pairwise_pots[edge_index];
+                        REAL new_potential_node_2 = distances_from_source[current_pot.index_mini_node1]
+                                             + current_pot.linear_pot;
+                        if (distances_from_source[current_pot.index_mini_node2] > new_potential_node_2)
+                        {
+                            distances_from_source[current_pot.index_mini_node2] = new_potential_node_2;
+                            nodes_to_update.push(std::pair<INDEX, INDEX>(current_pot.index_mini_node2, edge_index));
+                            predecessors[current_pot.index_mini_node2] = edge_index;
+
+                            //Assuming that if we reached the last index of distances that must be the terminal node.
+                            if (current_pot.index_mini_node2 == distances_from_source.size() - 1)
+                                reached_terminal = true;
+                        }
+                    }
+                }
+                return reached_terminal;
+            }
         private:
-            struct max_potential_entry {
-                REAL value;
-                REAL cost;
+            struct max_linear_pairwise_pot {
+                REAL max_pot;
+                REAL linear_pot;
                 const INDEX i,j; // pairwise potential variables
                 const INDEX l1,l2; // pairwise potential labels 
+                const INDEX index_mini_node1, index_mini_node2; 
+                // Assuming each label is a mini-node.
+                bool is_added = false;  //TODO: Set this to true, when a pairwise term is added to the chain based on sorting of max pot.
             };
-            vector<max_potential_entry> max_potential;
+            vector<max_linear_pairwise_pot> all_pairwise_pots;
     };
 
     class pairwise_max_factor_message {
