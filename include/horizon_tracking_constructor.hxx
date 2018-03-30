@@ -1,7 +1,7 @@
 #ifndef LP_MP_HORIZON_TRACKING_CONSTRUCTOR_HXX
 #define LP_MP_HORIZON_TRACKING_CONSTRUCTOR_HXX
 
-#include ""
+#include "vector.hxx"
 
 namespace LP_MP {
 

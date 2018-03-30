@@ -2,6 +2,7 @@
 #define LP_MP_HORIZON_TRACKING_FACTORS_HXX
 
 #include "vector.hxx"
+#include "mrf_problem_construction.hxx"
 
 namespace LP_MP {
 
@@ -14,24 +15,24 @@ namespace LP_MP {
                 linear_potential(size_begin, size_end),
                 primal(std::distance(size_begin, size_end)),
                 max_potential_sorted(max_potential.total_size())
-        {}
+            {}
 
-        template<typename MATRIX>
-        void assign_max_potential_matrix(const INDEX entry, const MATRIX& costs)
-        {
-            INDEX c = 0;
-            for(INDEX i=0; i<costs.dim1(); ++i) {
-                for(INDEX j=0; j<costs.dim2(); ++j) {
-                    max_potential[entry][c++] = costs(i,j);
+            template<typename MATRIX>
+            void assign_max_potential_matrix(const INDEX entry, const MATRIX& costs)
+            {
+                INDEX c = 0;
+                for(INDEX i=0; i<costs.dim1(); ++i) {
+                    for(INDEX j=0; j<costs.dim2(); ++j) {
+                        max_potential[entry][c++] = costs(i,j);
+                    }
                 }
             }
-        }
 
             REAL EvaluatePrimal() const
             {
                 REAL linear_cost = 0.0;
                 REAL max_cost = -std::numeric_limits<REAL>::infinity();
-                for(INDEX i=0; i<potential.size(); ++i) {
+                for(INDEX i=0; i<max_potential.size(); ++i) {
                     linear_cost += linear_potential[i][ primal[i] ];
                     max_cost = std::max(max_potential[i][ primal[i] ], max_cost);
                 }
@@ -94,8 +95,8 @@ namespace LP_MP {
             {
                 INDEX c=0;
                 for(INDEX var=0; var<max_potential.size(); ++var) {
-                    for(INDEX label=0; label<max_potential[i].size(); ++label) {
-                        max_potential[c++] = {max_potential[var][label], var, label};
+                    for(INDEX label=0; label<max_potential[var].size(); ++label) {
+                        max_potential_sorted[c++] = {max_potential[var][label], var, label};
                     }
                 }
                 std::sort(max_potential_sorted.begin(), max_potential_sorted.end(), [](auto& a, auto& b) { return a.cost < b.cost; });
@@ -120,9 +121,82 @@ namespace LP_MP {
                 REAL cost;
                 INDEX variable;
                 INDEX label;
-            }
-            vector<max_potetial_entry> max_potential_sorted;
+            };
+            vector<max_potential_entry> max_potential_sorted;
 
+    };
+
+    class max_potential_on_chain {
+        public:
+            template<typename MRF_CONSTRUCTOR, typename ITERATOR>
+            void setup_mcf(MFC_CONSTRUCTOR& mrf, ITERATOR var_begin, ITERATOR var_end)
+            {
+                INDEX no_nodes = 0;
+                INDEX no_edges = 0;
+                INDEX no_labels_first = mrf.GetNumberOfLabels(*var_begin); 
+                no_edges += no_labels_first; // for source node
+                
+                for(auto it=var_begin; std::next(it)!=var_end; ++it) {
+                    const INDEX i = *it;
+                    const INDEX j = *std::next(it);
+                    no_nodes += mrf.GetNumberOfLabels(j);
+                    no_edges += mrf.GetNumberOfLabels(i) * mrf.GetNumberOfLabels(j);
+                }
+
+                INDEX no_labels_end = mrf.GetNumberOfLabels(*(var_end - 1)); //TODO: Check var_end if end inclusive
+                no_edges +=  no_labels_end; // for terminal node
+
+                MCF::SSP mcf(no_nodes, no_edges);
+
+                INDEX node_counter = 0;
+                
+                //Adding additional edges from source to first node:
+                for (INDEX xj = 0; xj < no_labels_first; ++xj){
+                    mcf.add_edge(0, xj, 0, 1, 0.0);
+                }
+
+                node_counter += no_labels_first;
+
+                for(auto it=var_begin; std::next(it)!=var_end; ++it) {
+                    const INDEX i = *it;
+                    const INDEX j = *std::next(it);
+                    const INDEX no_labels_i = mrf.GetNumberOfLabels(i);
+
+                    if(i<j) {
+                        for(INDEX xi=0; xi<mrf.GetNumberOfLabels(i); ++xi) {
+                            for(INDEX xj=0; xj<mrf.GetNumberOfLabels(j); ++xj) {
+                                mcf.add_edge(node_counter + xi, node_counter + no_labels_i * xj, 0, 1, 0.0);
+                            }
+                        }
+                    } else {
+                        assert(j<i);
+                        for(INDEX xj=0; xj<mrf.GetNumberOfLabels(j); ++xj) {
+                            for(INDEX xi=0; xi<mrf.GetNumberOfLabels(i); ++xi) {
+                                mcf.add_edge(node_counter + xi, node_counter + no_labels_i * xj, 0, 1, 0.0);
+                            }
+                        }
+                    }
+                    node_counter += no_labels_i;
+                }
+
+                //Adding additional edges from last node to terminal:
+                for (INDEX xi = 0; xi < no_labels_end; ++xi){
+                    mcf.add_edge(node_counter + xi, no_nodes - 1, 0, 1, 0.0);
+                }
+            }
+
+            REAL LowerBound() const
+            {
+
+            }
+        private:
+            struct max_potential_entry {
+                REAL value;
+                REAL cost;
+                const INDEX i,j; // pairwise potential variables
+                const INDEX l1,l2; // pairwise potential labels 
+            };
+            vector<max_potential_entry> max_potential;
     };
 
     class pairwise_max_factor_message {
@@ -205,72 +279,6 @@ namespace LP_MP {
         private:
             const INDEX entry;
     };
-
-class max_potential_on_chain {
-public:
-    template<typename MRF_CONSTRUCTOR, typename ITERATOR>
-    void setup_mcf(MFC_CONSTRUCTOR& mrf, ITERATOR var_begin, ITERATOR var_end)
-    {
-        INDEX no_nodes = 0;
-        INDEX no_edges = mrf.GetNumberOfLabels(*var_begin);
-        for(auto it=var_begin; std::next(it)!=var_end; ++it) {
-            const INDEX i = *it;
-            const INDEX j = *std::next(it);
-            no_nodes += mrf.GetNumberOfLabels(j);
-            no_edges += mrf.GetNumberOfLabels(i) * mrf.GetNumberOfLabels(j);
-        }
-        // for additional edges that require one unit to be sent
-        no_edges += mrf.GetNumberOfLabels(*var_begin);
-
-        MCF::SSP mcf(no_nodes, no_edges);
-
-        INDEX node_counter = 0;
-        for(auto it=var_begin; std::next(it)!=var_end; ++it) {
-            const INDEX i = *it;
-            const INDEX j = *std::next(it);
-            const INDEX no_labels_i = mrf.GetNumberOfLabels(i);
-            const INDEX no_labels_j = mrf.GetNumberOfLabels(j);
-
-            if(i<j) {
-                for(INDEX xi=0; xi<mrf.GetNumberOfLabels(i); ++xi) {
-                    for(INDEX xj=0; xj<mrf.GetNumberOfLabels(j); ++xj) {
-                        mcf.add_edge(node_counter + xi, node_counter + no_labels_i + xj, 0, 1, 0.0);
-                    }
-                }
-            } else {
-                assert(j<i);
-                for(INDEX xj=0; xj<mrf.GetNumberOfLabels(j); ++xj) {
-                    for(INDEX xi=0; xi<mrf.GetNumberOfLabels(i); ++xi) {
-                        mcf.add_edge(node_counter + xi, node_counter + no_labels_i + xj, 0, 1, 0.0);
-                    }
-                }
-            }
-            node_counter += no_labels_i;
-        }
-
-        // add excesses:
-        {
-            const INDEX first_node = *var_begin;
-            const INDEX no_labels = mrf.GetNumberOfLabels(first_node);
-
-
-        }
-    }
-
-    REAL LowerBound() const
-    {
-
-    }
-private:
-    struct max_potential_entry {
-        REAL value;
-        REAL cost;
-        const INDEX i,j; // pairwise potential variables
-        const INDEX l1,l2; // pairwise potential labels 
-    }
-    vector<max_potential_entry> max_potential;
-};
-
 }
 
 #endif // LP_MP_HORIZON_TRACKING_FACTORS_HXX
