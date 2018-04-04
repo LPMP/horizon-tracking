@@ -140,8 +140,8 @@ int main()
 
   allPairwisePots.push_back(pot);
 
-  max_potential_on_chain obj = max_potential_on_chain(allPairwisePots, 3, 8);
-  std::vector<INDEX> sol = obj.Solve();
-  for (int i = 0; i < sol.size(); i++)
-    std::cout<<sol[i]<<std::endl;
+  max_potential_on_chain chain = max_potential_on_chain(allPairwisePots, 3, 8);
+  chain.Solve();
+  REAL objective = chain.GetSolutionObjective();
+  test(objective == 5);
 }

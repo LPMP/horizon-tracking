@@ -145,11 +145,11 @@ namespace LP_MP {
                 NumMiniNodes = numMiniNodes;
             }
 
-            std::vector<INDEX> Solve()
+            void Solve()
             {
+                solution.assign(NumNodes, 0);
                 InsertTerminalNode();
                 REAL best_solution_cost = INFINITY;
-                std::vector<INDEX> solution(NumNodes - 1, 0);                 // Stores the optimal label for each node index
                 std::map<INDEX, INDEX> predecessors;    // For each mini-node, stores the incoming arc which minimizes the distance to that mini-node
                 std::vector<REAL> distances_from_source(NumMiniNodes, INFINITY);
                 for (int i = 0; i < all_pairwise_pots.size(); i++)
@@ -182,8 +182,30 @@ namespace LP_MP {
                         }
                     }
                 }
+                solutionObjective = best_solution_cost;
+                RemoveTerminalNode();
+            }
+
+            std::vector<INDEX> GetSolution() const
+            {
                 return solution;
             }
+
+            REAL GetSolutionObjective() const
+            {
+                return solutionObjective;
+            }
+
+            REAL LowerBound() const
+            {
+
+            }
+
+        private:
+            std::vector<max_linear_pairwise_pot> all_pairwise_pots;
+            int NumNodes, NumMiniNodes;
+            std::vector<INDEX> solution;
+            REAL solutionObjective;
 
             void InsertTerminalNode()
             {
@@ -197,13 +219,28 @@ namespace LP_MP {
                     currentPot.index_mini_node2 = NumMiniNodes;
                     currentPot.l1 = l1;
                     currentPot.l2 = 0;
+                    currentPot.max_pot = 0;
+                    currentPot.linear_pot = 0;
                     all_pairwise_pots.push_back(currentPot);
                 }
                 NumNodes = NumNodes + 1;
                 NumMiniNodes = NumMiniNodes + 1;
             }
 
-            // TODO: Take unary cost into account as well
+            void RemoveTerminalNode()
+            {
+                for (int currentEdgeToRemove = all_pairwise_pots.size() - 1; currentEdgeToRemove >= 0; currentEdgeToRemove++)
+                {
+                    if(all_pairwise_pots[currentEdgeToRemove].j < NumNodes - 1)
+                        break;
+
+                    all_pairwise_pots.erase(all_pairwise_pots.begin() + currentEdgeToRemove);
+                }
+
+                NumNodes = NumNodes - 1;
+                NumMiniNodes = NumMiniNodes - 1;
+            }
+
             bool UpdateDistances(std::queue<std::pair<INDEX, INDEX>>& nodes_to_update, const std::vector<max_linear_pairwise_pot>& all_pairwise_pots, std::vector<REAL>& distances_from_source, std::map<INDEX, INDEX>& predecessors)
             {
                 bool reached_terminal = false;
@@ -248,10 +285,6 @@ namespace LP_MP {
                 return reached_terminal;
             }
 
-            REAL LowerBound() const
-            {
-
-            }
 
             std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<max_linear_pairwise_pot>& pots) 
             {
@@ -264,9 +297,7 @@ namespace LP_MP {
                 return idx;
             }
 
-        private:
-            std::vector<max_linear_pairwise_pot> all_pairwise_pots;
-            int NumNodes, NumMiniNodes;
+
     };
 
     /*
