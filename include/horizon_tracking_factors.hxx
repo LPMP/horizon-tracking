@@ -126,64 +126,21 @@ namespace LP_MP {
 
     }; */
 
-    struct max_linear_pairwise_pot {
-        REAL max_pot;
-        REAL linear_pot;
-        INDEX i,j; // pairwise potential variables
-        INDEX l1,l2; // pairwise potential labels 
-        INDEX index_mini_node1, index_mini_node2; 
-        // Assuming each label is a mini-node.
-        bool is_added = false;
+    struct MaxPairwisePotential {
+        REAL value;
+        INDEX n1, n2; 
+        INDEX l1, l2; 
+        bool isAdded = false;
     };
 
     class max_potential_on_chain {
-        public:
-            max_potential_on_chain(std::vector<max_linear_pairwise_pot> allPairwisePots, int numNodes, int numMiniNodes)
+        public:       
+            max_potential_on_chain(std::vector<MaxPairwisePotential>& maxPairwisePotentials, std::vector<matrix<REAL>> LinearPairwisePotentials, std::vector<INDEX>& numLabels, int numNodes)
             {
-                all_pairwise_pots = allPairwisePots;
+                MaxPairwisePotentials = maxPairwisePotentials;
+                LinearPairwisePotentials = LinearPairwisePotentials;
                 NumNodes = numNodes;
-                NumMiniNodes = numMiniNodes;
-            }
-
-            void Solve()
-            {
-                solution.assign(NumNodes, 0);
-                InsertTerminalNode();
-                REAL best_solution_cost = INFINITY;
-                std::map<INDEX, INDEX> predecessors;    // For each mini-node, stores the incoming arc which minimizes the distance to that mini-node
-                std::vector<REAL> distances_from_source(NumMiniNodes, INFINITY);
-                for (int i = 0; i < all_pairwise_pots.size(); i++)
-                {
-                    if (all_pairwise_pots[i].i > 0)
-                        break;
-
-                    distances_from_source[all_pairwise_pots[i].l1] = 0;    
-                }
-
-                std::vector<INDEX> sorting_order = GetPairwisePotsSortingOrder(all_pairwise_pots);
-                std::queue<std::pair<INDEX, INDEX>> nodes_to_update;
-                for(const auto& current_edge_index : sorting_order)
-                {
-                    nodes_to_update.push(std::pair<INDEX, INDEX>(all_pairwise_pots[current_edge_index].index_mini_node1, current_edge_index));
-                    all_pairwise_pots[current_edge_index].is_added = true;         // True allows the arc to be considered for shortest path
-                    bool found_path = UpdateDistances(nodes_to_update, all_pairwise_pots, distances_from_source, predecessors);
-                    if (found_path)
-                    {
-                        REAL current_solution_cost = all_pairwise_pots[current_edge_index].max_pot + distances_from_source[NumMiniNodes - 1];
-                        if (current_solution_cost < best_solution_cost)
-                        {
-                            best_solution_cost = current_solution_cost;
-                            INDEX current_mini_node_index = NumMiniNodes - 1;  // Assuming that the terminal node is the ending node.
-                            for (int i = NumNodes - 2; i >= 0; i--)
-                            {
-                                solution[i] = all_pairwise_pots[predecessors[current_mini_node_index]].l1;
-                                current_mini_node_index = all_pairwise_pots[predecessors[current_mini_node_index]].index_mini_node1;
-                            }
-                        }
-                    }
-                }
-                solutionObjective = best_solution_cost;
-                RemoveTerminalNode();
+                NumLabels = numLabels;
             }
 
             std::vector<INDEX> GetSolution() const
@@ -191,114 +148,171 @@ namespace LP_MP {
                 return solution;
             }
 
-            REAL GetSolutionObjective() const
+            REAL LowerBound()
+            {
+                Solve();
+                return solutionObjective;
+                // compute optimal solution and return its cost
+            }
+
+            REAL EvaluatePrimal()
             {
                 return solutionObjective;
+                // return cost of current solution
             }
 
-            REAL LowerBound() const
+            void MaximizePotentialAndComputePrimal() 
             {
-
+                Solve();
+                // compute optimal solution and store it
             }
 
+            
         private:
-            std::vector<max_linear_pairwise_pot> all_pairwise_pots;
-            int NumNodes, NumMiniNodes;
+            std::vector<MaxPairwisePotential> MaxPairwisePotentials;
+            std::vector<matrix<REAL>> LinearPairwisePotentials;
+            std::vector<INDEX> NumLabels;
+
+            int NumNodes;
             std::vector<INDEX> solution;
             REAL solutionObjective;
 
             void InsertTerminalNode()
             {
-                INDEX lastNodeNumStates = all_pairwise_pots[all_pairwise_pots.size() - 1].l2 + 1;
+                INDEX lastNodeNumStates = NumLabels[NumNodes - 1];
                 for (int l1 = 0; l1 < lastNodeNumStates; l1++)
                 {
-                    max_linear_pairwise_pot currentPot;
-                    currentPot.i = NumNodes;
-                    currentPot.j = NumNodes + 1;
-                    currentPot.index_mini_node1 = NumMiniNodes - lastNodeNumStates + l1;
-                    currentPot.index_mini_node2 = NumMiniNodes;
+                    MaxPairwisePotential currentPot;
+                    currentPot.n1 = NumNodes;
+                    currentPot.n2 = NumNodes + 1;
                     currentPot.l1 = l1;
                     currentPot.l2 = 0;
-                    currentPot.max_pot = 0;
-                    currentPot.linear_pot = 0;
-                    all_pairwise_pots.push_back(currentPot);
+                    currentPot.value = 0;
+                    MaxPairwisePotentials.push_back(currentPot);
                 }
+                NumLabels.push_back(1); // Terminal Node has one label
                 NumNodes = NumNodes + 1;
-                NumMiniNodes = NumMiniNodes + 1;
             }
 
             void RemoveTerminalNode()
             {
-                for (int currentEdgeToRemove = all_pairwise_pots.size() - 1; currentEdgeToRemove >= 0; currentEdgeToRemove++)
+                for (int currentEdgeToRemove = MaxPairwisePotentials.size() - 1; currentEdgeToRemove >= 0; currentEdgeToRemove--)
                 {
-                    if(all_pairwise_pots[currentEdgeToRemove].j < NumNodes - 1)
+                    if (MaxPairwisePotentials[currentEdgeToRemove].n2 < NumNodes - 1)
                         break;
 
-                    all_pairwise_pots.erase(all_pairwise_pots.begin() + currentEdgeToRemove);
+                    MaxPairwisePotentials.erase(MaxPairwisePotentials.begin() + currentEdgeToRemove);
                 }
 
                 NumNodes = NumNodes - 1;
-                NumMiniNodes = NumMiniNodes - 1;
+                NumLabels.pop_back();
             }
 
-            bool UpdateDistances(std::queue<std::pair<INDEX, INDEX>>& nodes_to_update, const std::vector<max_linear_pairwise_pot>& all_pairwise_pots, std::vector<REAL>& distances_from_source, std::map<INDEX, INDEX>& predecessors)
+            void Solve()
             {
-                bool reached_terminal = false;
-                while(!nodes_to_update.empty())
+                solution.assign(NumNodes, 0);
+                InsertTerminalNode();
+                REAL bestSolutionCost = INFINITY;
+                std::vector<INDEX> predecessors;    // For each node, store the label of the previous node
+                std::vector<std::vector<INDEX> > distanceFromSource(NumNodes);
+                REAL initialValue = 0;
+                for (INDEX i = 0 ; i < NumNodes ; i++ )
                 {
-                    std::pair<INDEX, INDEX> currentPair = nodes_to_update.front();
-                    nodes_to_update.pop();
-                    INDEX node_to_update = currentPair.first;
-                    INDEX edge_index_start = currentPair.second;
-                    bool anyAdded = false;
+                    if (i > 0)
+                        initialValue = INFINITY;
 
-                    for (INDEX edge_index = edge_index_start; edge_index < all_pairwise_pots.size(); edge_index++)
+                    distanceFromSource[i].resize(NumLabels[i], initialValue);
+                }
+
+                std::vector<INDEX> sortingOrder = GetPairwisePotsSortingOrder(MaxPairwisePotentials);
+                std::queue<INDEX> edgesToUpdate;
+                for(const auto& currentEdgeToInsert : sortingOrder)
+                {
+                    edgesToUpdate.push(currentEdgeToInsert);
+                    MaxPairwisePotentials[currentEdgeToInsert].isAdded = true;         // True allows the arc to be considered for shortest path
+                    bool foundPath = UpdateDistances(edgesToUpdate, distanceFromSource, predecessors);
+                    if (foundPath)
                     {
-                        // Do not consider this potential as it has not been added through sorting yet.
-                        if (!all_pairwise_pots[edge_index].is_added)
-                            continue;
-
-                        // Assuming that the pairwise pots are stored contiguously for each left node.
-                        if (all_pairwise_pots[edge_index].index_mini_node1 != node_to_update)
+                        REAL currentCost = MaxPairwisePotentials[currentEdgeToInsert].value + distanceFromSource[NumNodes - 1][0];
+                        if (currentCost < bestSolutionCost)
                         {
-                            if (!anyAdded)
-                                continue;
-                            break;
-                        }
-                        anyAdded = true;
-                        max_linear_pairwise_pot current_pot = all_pairwise_pots[edge_index];
-                        REAL new_potential_node_2 = distances_from_source[current_pot.index_mini_node1]
-                                             + current_pot.linear_pot;
-
-                        if (distances_from_source[current_pot.index_mini_node2] > new_potential_node_2)
-                        {
-                            distances_from_source[current_pot.index_mini_node2] = new_potential_node_2;
-                            nodes_to_update.push(std::pair<INDEX, INDEX>(current_pot.index_mini_node2, edge_index));
-                            predecessors[current_pot.index_mini_node2] = edge_index;
-
-                            //Assuming that if we reached the last index of distances that must be the terminal node.
-                            if (current_pot.index_mini_node2 == NumMiniNodes - 1)
-                                reached_terminal = true;
+                            bestSolutionCost = currentCost;
+                            for (int currentNodeToBackTrack = NumNodes - 2; currentNodeToBackTrack >= 0; currentNodeToBackTrack--)
+                            {
+                                solution[currentNodeToBackTrack] = predecessors[currentNodeToBackTrack + 1];
+                            }
                         }
                     }
                 }
-                return reached_terminal;
+                solutionObjective = bestSolutionCost;
+                RemoveTerminalNode();
+            }
+
+            bool UpdateDistances(std::queue<INDEX>& edgesToUdate, std::vector<std::vector<INDEX> >& distanceFromSource, std::vector<INDEX>& predecessors)
+            {
+                bool reachedTerminal = false;
+                while(!edgesToUdate.empty())
+                {
+                    INDEX currentEdge = edgesToUdate.front();
+                    edgesToUdate.pop();
+                    auto currentMaxPot = MaxPairwisePotentials[currentEdge];
+                    
+                    INDEX n1 = currentMaxPot.n1;
+                    INDEX n2 = currentMaxPot.n2;
+                    INDEX l1 = currentMaxPot.l1;
+                    INDEX l2 = currentMaxPot.l2;
+
+                    REAL currentDistanceTon2l2 = distanceFromSource[n2][l2];
+                    REAL currentLinearPot = 0;
+                    if (n2 < NumNodes - 1) // As LinearPairwisePotentials does not contain potentials from last node to terminal node
+                        currentLinearPot = LinearPairwisePotentials[n1](l1, l2);
+
+                    REAL offeredDistanceTon2l2 = distanceFromSource[n1][l1] + currentLinearPot;
+                    if (offeredDistanceTon2l2 >= currentDistanceTon2l2)
+                        continue;
+
+                    distanceFromSource[n2][l2] = offeredDistanceTon2l2;
+                    predecessors[n2] = l1;
+                    
+                    INDEX n3 = n2 + 1;
+                    if (n3 == NumNodes - 1)
+                    {
+                        reachedTerminal = true;
+                        continue;
+                    }
+                    // The distance of n2, l2 has been updated so add all of its immediate children to the queue to be inspected.
+                    INDEX firstEdgeToConsider = currentEdge + (NumLabels[n2] - 1 - l2) + (NumLabels[n1] - 1 - l1) * NumLabels[n2] + l2 * NumLabels[n3] + 1;
+                    for (INDEX l3 = 0, currentEdgeToConsider = firstEdgeToConsider; l3 < NumLabels[n2]; l2++, currentEdgeToConsider++)
+                    {
+                        // Do not consider this potential as it has not been added through sorting yet.
+                        if (!MaxPairwisePotentials[currentEdgeToConsider].isAdded)
+                            continue;
+                        
+                        edgesToUdate.push(currentEdgeToConsider);
+                    }
+                }
+                return reachedTerminal;
             }
 
 
-            std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<max_linear_pairwise_pot>& pots) 
+            std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<MaxPairwisePotential>& pots) 
             {
                 std::vector<INDEX> idx(pots.size());
                 std::iota(idx.begin(), idx.end(), 0);
 
                 std::sort(idx.begin(), idx.end(),
-                    [&pots](INDEX i1, INDEX i2) {return pots[i1].max_pot < pots[i2].max_pot;});
+                    [&pots](INDEX i1, INDEX i2) {return pots[i1].value < pots[i2].value;});
 
                 return idx;
             }
-
-
     };
+
+    // class unary_max_potential_on_chain_message 
+    // {
+
+
+
+    // }
 
     /*
     class pairwise_max_factor_message {
