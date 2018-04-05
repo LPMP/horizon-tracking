@@ -127,21 +127,34 @@ namespace LP_MP {
 
     }; */
 
-    struct MaxPairwisePotential {
-        REAL value;
-        INDEX n1, n2; 
-        INDEX l1, l2; 
-        bool isAdded = false;
-    };
 
     class max_potential_on_chain {
+        struct MaxPairwisePotential {
+            REAL value;
+            INDEX n1, n2; 
+            INDEX l1, l2; 
+            bool isAdded = false;
+        };
+
         public:       
-            max_potential_on_chain(std::vector<MaxPairwisePotential>& maxPairwisePotentials, std::vector<matrix<REAL>> linearPairwisePotentials, std::vector<INDEX>& numLabels, int numNodes)
+            max_potential_on_chain(const std::vector<matrix<REAL>>& maxPairwisePotentials, const std::vector<matrix<REAL>>& linearPairwisePotentials, const std::vector<INDEX>& numLabels)
+            :
+                LinearPairwisePotentials(linearPairwisePotentials),
+                NumNodes(numLabels.size()),
+                NumLabels(numLabels)
             {
-                MaxPairwisePotentials = maxPairwisePotentials;
-                LinearPairwisePotentials = linearPairwisePotentials;
-                NumNodes = numNodes;
-                NumLabels = numLabels;
+                assert(maxPairwisePotentials.size() + 1 == numLabels.size()); 
+                assert(maxPairwisePotentials.size() == linearPairwisePotentials.size());
+
+                for(std::size_t n1=0; n1<maxPairwisePotentials.size(); ++n1) {
+                    assert(maxPairwisePotentials[n1].dim1() == linearPairwisePotentials[n1].dim1() && maxPairwisePotentials[n1].dim2() == linearPairwisePotentials[n1].dim2());
+                    const auto& p = maxPairwisePotentials[n1];
+                    for(std::size_t i=0; i<p.dim1(); ++i) {
+                        for(std::size_t j=0; j<p.dim2(); ++j) {
+                            MaxPairwisePotentials.push_back( {p(i,j), n1, n1+1, i, j, false} );
+                        }
+                    }
+                }
             }
 
             std::vector<INDEX> GetSolution() const
