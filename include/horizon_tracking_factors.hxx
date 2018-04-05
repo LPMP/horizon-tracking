@@ -2,7 +2,8 @@
 #define LP_MP_HORIZON_TRACKING_FACTORS_HXX
 
 #include "vector.hxx"
-#include "mrf_problem_construction.hxx"
+#include <queue>
+#include <limits>
 
 namespace LP_MP {
     /*
@@ -135,10 +136,10 @@ namespace LP_MP {
 
     class max_potential_on_chain {
         public:       
-            max_potential_on_chain(std::vector<MaxPairwisePotential>& maxPairwisePotentials, std::vector<matrix<REAL>> LinearPairwisePotentials, std::vector<INDEX>& numLabels, int numNodes)
+            max_potential_on_chain(std::vector<MaxPairwisePotential>& maxPairwisePotentials, std::vector<matrix<REAL>> linearPairwisePotentials, std::vector<INDEX>& numLabels, int numNodes)
             {
                 MaxPairwisePotentials = maxPairwisePotentials;
-                LinearPairwisePotentials = LinearPairwisePotentials;
+                LinearPairwisePotentials = linearPairwisePotentials;
                 NumNodes = numNodes;
                 NumLabels = numLabels;
             }
@@ -183,8 +184,8 @@ namespace LP_MP {
                 for (int l1 = 0; l1 < lastNodeNumStates; l1++)
                 {
                     MaxPairwisePotential currentPot;
-                    currentPot.n1 = NumNodes;
-                    currentPot.n2 = NumNodes + 1;
+                    currentPot.n1 = NumNodes - 1;
+                    currentPot.n2 = NumNodes;
                     currentPot.l1 = l1;
                     currentPot.l2 = 0;
                     currentPot.value = 0;
@@ -213,13 +214,13 @@ namespace LP_MP {
                 solution.assign(NumNodes, 0);
                 InsertTerminalNode();
                 REAL bestSolutionCost = INFINITY;
-                std::vector<INDEX> predecessors;    // For each node, store the label of the previous node
-                std::vector<std::vector<INDEX> > distanceFromSource(NumNodes);
+                std::vector<INDEX> predecessors(NumNodes);    // For each node, store the label of the previous node
+                std::vector<std::vector<REAL> > distanceFromSource(NumNodes);
                 REAL initialValue = 0;
                 for (INDEX i = 0 ; i < NumNodes ; i++ )
                 {
                     if (i > 0)
-                        initialValue = INFINITY;
+                        initialValue = std::numeric_limits<REAL>::infinity();
 
                     distanceFromSource[i].resize(NumLabels[i], initialValue);
                 }
@@ -248,7 +249,7 @@ namespace LP_MP {
                 RemoveTerminalNode();
             }
 
-            bool UpdateDistances(std::queue<INDEX>& edgesToUdate, std::vector<std::vector<INDEX> >& distanceFromSource, std::vector<INDEX>& predecessors)
+            bool UpdateDistances(std::queue<INDEX>& edgesToUdate, std::vector<std::vector<REAL> >& distanceFromSource, std::vector<INDEX>& predecessors)
             {
                 bool reachedTerminal = false;
                 while(!edgesToUdate.empty())
@@ -274,15 +275,17 @@ namespace LP_MP {
                     distanceFromSource[n2][l2] = offeredDistanceTon2l2;
                     predecessors[n2] = l1;
                     
-                    INDEX n3 = n2 + 1;
-                    if (n3 == NumNodes - 1)
+                    if (n2 == NumNodes - 1)
                     {
                         reachedTerminal = true;
                         continue;
                     }
+
+                    INDEX n3 = n2 + 1;
+
                     // The distance of n2, l2 has been updated so add all of its immediate children to the queue to be inspected.
                     INDEX firstEdgeToConsider = currentEdge + (NumLabels[n2] - 1 - l2) + (NumLabels[n1] - 1 - l1) * NumLabels[n2] + l2 * NumLabels[n3] + 1;
-                    for (INDEX l3 = 0, currentEdgeToConsider = firstEdgeToConsider; l3 < NumLabels[n2]; l2++, currentEdgeToConsider++)
+                    for (INDEX l3 = 0, currentEdgeToConsider = firstEdgeToConsider; l3 < NumLabels[n2]; l3++, currentEdgeToConsider++)
                     {
                         // Do not consider this potential as it has not been added through sorting yet.
                         if (!MaxPairwisePotentials[currentEdgeToConsider].isAdded)

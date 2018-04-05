@@ -9,8 +9,8 @@ int main()
   std::vector<INDEX> numLabels = {3, 2, 3};
 
   std::vector<MaxPairwisePotential> maxPairwisePotentials;
-  std::vector<matrix<REAL>> LinearPairwisePotentials(numNodes);
-  for (int i = 0; i < numNodes; i++)
+  std::vector<matrix<REAL>> LinearPairwisePotentials(numNodes - 1);
+  for (int i = 0; i < numNodes - 1; i++)
   {
     LinearPairwisePotentials[i] = matrix<REAL>(numLabels[i], numLabels[i + 1]);
   }
@@ -75,7 +75,7 @@ int main()
   pot.n2 = 2;
   pot.l1 = 0;
   pot.l2 = 0;
-  LinearPairwisePotentials[pot.n1](pot.l1, pot.l2) = 2;
+  LinearPairwisePotentials[pot.n1](pot.l1, pot.l2) = 1.5;
   pot.value = 2;
 
   maxPairwisePotentials.push_back(pot);
@@ -127,5 +127,5 @@ int main()
 
   max_potential_on_chain chain = max_potential_on_chain(maxPairwisePotentials, LinearPairwisePotentials, numLabels, numNodes);
   REAL objective = chain.LowerBound();
-  test(objective == 5);
+  test(objective == 4.5);
 }
