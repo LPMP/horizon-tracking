@@ -8,30 +8,24 @@ int main()
     // problem with zero linear potentials
     const int numNodes = 3;
     std::vector<INDEX> numLabels = {3, 2, 3};
+    std::vector<std::array<INDEX,2>> potential_size{{3,2}, {2,3}};
 
-    std::vector<matrix<REAL>> LinearPairwisePotentials(numNodes - 1);
-    for (int i = 0; i < numNodes - 1; i++)
-    {
-        LinearPairwisePotentials[i] = matrix<REAL>(numLabels[i], numLabels[i + 1]);
-    }
+    tensor3_variable<REAL> LinearPairwisePotentials(potential_size.begin(), potential_size.end());
+    tensor3_variable<REAL> MaxPairwisePotentials(potential_size.begin(), potential_size.end());
 
-    std::vector<matrix<REAL>> MaxPairwisePotentials(numNodes - 1);
+    MaxPairwisePotentials(0,0,0) = 1;
+    MaxPairwisePotentials(0,1,0) = 2;
+    MaxPairwisePotentials(0,2,0) = 1;
+    MaxPairwisePotentials(0,0,1) = 3;
+    MaxPairwisePotentials(0,1,1) = 4;
+    MaxPairwisePotentials(0,2,1) = 2;
 
-    MaxPairwisePotentials[0] = matrix<REAL>(3,2);
-    MaxPairwisePotentials[0](0,0) = 1;
-    MaxPairwisePotentials[0](1,0) = 2;
-    MaxPairwisePotentials[0](2,0) = 1;
-    MaxPairwisePotentials[0](0,1) = 3;
-    MaxPairwisePotentials[0](1,1) = 4;
-    MaxPairwisePotentials[0](2,1) = 2;
-
-    MaxPairwisePotentials[1] = matrix<REAL>(2,3);
-    MaxPairwisePotentials[1](0,0) = 1.5;
-    MaxPairwisePotentials[1](0,1) = 5;
-    MaxPairwisePotentials[1](0,2) = 1;
-    MaxPairwisePotentials[1](1,0) = 3;
-    MaxPairwisePotentials[1](1,1) = 1;
-    MaxPairwisePotentials[1](1,2) = 6;
+    MaxPairwisePotentials(1,0,0) = 1.5;
+    MaxPairwisePotentials(1,0,1) = 5;
+    MaxPairwisePotentials(1,0,2) = 1;
+    MaxPairwisePotentials(1,1,0) = 3;
+    MaxPairwisePotentials(1,1,1) = 1;
+    MaxPairwisePotentials(1,1,2) = 6;
 
     {
         max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels);
@@ -40,19 +34,19 @@ int main()
     }
 
     // now add linear potentials
-    LinearPairwisePotentials[0](0,0) = 100;
-    LinearPairwisePotentials[0](1,0) = 100;
-    LinearPairwisePotentials[0](2,0) = 100;
-    LinearPairwisePotentials[0](0,1) = 100;
-    LinearPairwisePotentials[0](1,1) = 100;
-    LinearPairwisePotentials[0](2,1) = 0;
+    LinearPairwisePotentials(0,0,0) = 100;
+    LinearPairwisePotentials(0,1,0) = 100;
+    LinearPairwisePotentials(0,2,0) = 100;
+    LinearPairwisePotentials(0,0,1) = 100;
+    LinearPairwisePotentials(0,1,1) = 100;
+    LinearPairwisePotentials(0,2,1) = 0;
 
-    LinearPairwisePotentials[1](0,0) = 100;
-    LinearPairwisePotentials[1](0,1) = 100;
-    LinearPairwisePotentials[1](0,2) = 100;
-    LinearPairwisePotentials[1](1,0) = 100;
-    LinearPairwisePotentials[1](1,1) = 100;
-    LinearPairwisePotentials[1](1,2) = 0;
+    LinearPairwisePotentials(1,0,0) = 100;
+    LinearPairwisePotentials(1,0,1) = 100;
+    LinearPairwisePotentials(1,0,2) = 100;
+    LinearPairwisePotentials(1,1,0) = 100;
+    LinearPairwisePotentials(1,1,1) = 100;
+    LinearPairwisePotentials(1,1,2) = 0;
 
     {
         max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels);
@@ -60,8 +54,8 @@ int main()
         test(objective == 6);
     }
 
-    LinearPairwisePotentials[0](2,0) = 1.5;
-    LinearPairwisePotentials[1](0,2) = 1.5;
+    LinearPairwisePotentials(0,2,0) = 1.5;
+    LinearPairwisePotentials(1,0,2) = 1.5;
 
     {
         max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels);

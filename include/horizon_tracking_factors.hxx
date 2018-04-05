@@ -137,30 +137,25 @@ namespace LP_MP {
         };
 
         public:       
-            max_potential_on_chain(const std::vector<matrix<REAL>>& maxPairwisePotentials, const std::vector<matrix<REAL>>& linearPairwisePotentials, const std::vector<INDEX>& numLabels)
+            max_potential_on_chain(const tensor3_variable<REAL>& maxPairwisePotentials, const tensor3_variable<REAL>& linearPairwisePotentials, const std::vector<INDEX>& numLabels)
             :
                 LinearPairwisePotentials(linearPairwisePotentials),
                 NumNodes(numLabels.size()),
                 NumLabels(numLabels)
             {
-                assert(maxPairwisePotentials.size() + 1 == numLabels.size()); 
-                assert(maxPairwisePotentials.size() == linearPairwisePotentials.size());
+                assert(maxPairwisePotentials.dim1() + 1 == numLabels.size()); 
+                assert(maxPairwisePotentials.dim1() == linearPairwisePotentials.dim1());
 
-                for(std::size_t n1=0; n1<maxPairwisePotentials.size(); ++n1) {
-                    assert(maxPairwisePotentials[n1].dim1() == linearPairwisePotentials[n1].dim1() && maxPairwisePotentials[n1].dim2() == linearPairwisePotentials[n1].dim2());
-                    const auto& p = maxPairwisePotentials[n1];
-                    for(std::size_t i=0; i<p.dim1(); ++i) {
-                        for(std::size_t j=0; j<p.dim2(); ++j) {
-                            MaxPairwisePotentials.push_back( {p(i,j), n1, n1+1, i, j, false} );
+                for(std::size_t n1=0; n1<maxPairwisePotentials.dim1(); ++n1) {
+                    assert(maxPairwisePotentials.dim2(n1) == linearPairwisePotentials.dim2(n1) && maxPairwisePotentials.dim3(n1) == linearPairwisePotentials.dim3(n1));
+                    for(std::size_t i=0; i<maxPairwisePotentials.dim2(n1); ++i) {
+                        for(std::size_t j=0; j<maxPairwisePotentials.dim3(n1); ++j) {
+                            MaxPairwisePotentials.push_back( {maxPairwisePotentials(n1,i,j), n1, n1+1, i, j, false} );
                         }
                     }
                 }
             }
 
-            std::vector<INDEX> GetSolution() const
-            {
-                return solution;
-            }
 
             REAL LowerBound()
             {
@@ -181,14 +176,41 @@ namespace LP_MP {
                 // compute optimal solution and store it
             }
 
+            template<class ARCHIVE> void serialize_primal(ARCHIVE& ar) { ar(); }
+            template<class ARCHIVE> void serialize_dual(ARCHIVE& ar) { ar( LinearPairwisePotentials.data() ); }
+
+            auto export_variables() { return std::tie( LinearPairwisePotentials.data() ); }
+            void init_primal() {}
             
+            template<typename ARRAY>
+            void apply(ARRAY& a) const 
+            { 
+                std::size_t offset = 0;
+                for(INDEX n=0; n<solution.size()-1; ++n) {
+                    a[offset + solution[n]* LinearPairwisePotentials.dim3(n) + solution[n+1]];
+                    offset += LinearPairwisePotentials.dim2(n) * LinearPairwisePotentials.dim3(n); 
+                }
+            }
+
+            template<typename EXTERNAL_SOLVER>
+            void construct_constraints(EXTERNAL_SOLVER& s, typename EXTERNAL_SOLVER::vector v) const
+            {
+                assert(false);
+            }
+            template<typename EXTERNAL_SOLVER>
+            void convert_primal(EXTERNAL_SOLVER& s, typename EXTERNAL_SOLVER::vector v)
+            {
+                assert(false);
+            } 
+
+            tensor3_variable<REAL> LinearPairwisePotentials;
+            std::vector<INDEX> solution;
+
         private:
             std::vector<MaxPairwisePotential> MaxPairwisePotentials;
-            std::vector<matrix<REAL>> LinearPairwisePotentials;
             std::vector<INDEX> NumLabels;
 
             int NumNodes;
-            std::vector<INDEX> solution;
             REAL solutionObjective;
 
             void InsertTerminalNode()
@@ -279,7 +301,7 @@ namespace LP_MP {
                     REAL currentDistanceTon2l2 = distanceFromSource[n2][l2];
                     REAL currentLinearPot = 0;
                     if (n2 < NumNodes - 1) // As LinearPairwisePotentials does not contain potentials from last node to terminal node
-                        currentLinearPot = LinearPairwisePotentials[n1](l1, l2);
+                        currentLinearPot = LinearPairwisePotentials(n1,l1, l2);
 
                     REAL offeredDistanceTon2l2 = distanceFromSource[n1][l1] + currentLinearPot;
                     if (offeredDistanceTon2l2 >= currentDistanceTon2l2)
@@ -323,35 +345,106 @@ namespace LP_MP {
             }
     };
 
-    // class unary_max_potential_on_chain_message 
-    // {
-
-
-
-    // }
-
-    /*
-    class pairwise_max_factor_message {
-        public:
-            pairwise_max_factor_message(const INDEX _entry) : entry(_entry) {}
-
-            template<typename FACTOR, typename MSG>
-            void RepamRight(FACTOR& r, const MSG& msgs)
-            {
-                for(INDEX i=0; i<r[entry].size(); ++i) {
-                    r.linear_potential[entry][i] += msgs[i];
+class unary_max_potential_on_chain_message {
+public:
+    template<typename FACTOR, typename MSG>
+    void RepamRight(FACTOR& r, const MSG& msgs)
+    {
+        if(variable < r.LinearPairwisePotentials.dim1()) {
+            for(std::size_t i=0; i<r.LinearPairwisePotentials.dim2(variable); ++i) {
+                for(std::size_t j=0; j<r.LinearPairwisePotentials.dim3(variable); ++j) {
+                    r.LinearPairwisePotentials(variable,i,j) += msgs[i];
                 }
             }
+        } else {
+            for(std::size_t i=0; i<r.LinearPairwisePotentials.dim2(variable-1); ++i) {
+                for(std::size_t j=0; j<r.LinearPairwisePotentials.dim3(variable-1); ++j) {
+                    r.LinearPairwisePotentials(variable,i,j) += msgs[j];
+                }
+            } 
+        }
+    }
 
-            template<typename FACTOR, typename MSG>
-            void RepamLeft(FACTOR& l, const MSG& msgs)
-            {
-                INDEX c=0;
-                for(INDEX i=0; i<l.dim1(); ++i) {
-                    for(INDEX j=0; j<l.dim2(); ++j) {
-                        l.cost(i,j) += msgs[c++];
-                    }
-                } 
+    template<typename FACTOR, typename MSG>
+    void RepamLeft(FACTOR& l, const MSG& msgs)
+    {
+        for(INDEX i=0; i<l.size(); ++i) {
+            l[i] += msgs[i];
+        } 
+    }
+
+    template<typename LEFT_FACTOR, typename MSG>
+    void send_message_to_right(const LEFT_FACTOR& l, MSG& msg, const REAL omega = 1.0)
+    {
+        msg -= omega*l;
+    }
+
+    template<typename RIGHT_FACTOR, typename MSG>
+    void send_message_to_left(const RIGHT_FACTOR& r, MSG& msg, const REAL omega = 1.0)
+    {
+        assert(false);
+    }
+
+    template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
+    bool ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
+    {
+        if(l.primal() < l.size()) {
+            const bool changed = (l.primal() != r.solution[variable]);
+            l.primal() = r.solution[variable];
+            return changed;
+        } else {
+            return false;
+        }
+    }
+
+    template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
+    bool ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
+    {
+        if(r.primal() < l.size()) {
+            const bool changed = (l.primal() != r.solution[variable]);
+            r.solution[variable] = l.primal();
+            return changed;
+        } else {
+            return false;
+        }
+    }
+
+    template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
+    bool CheckPrimalConsistency(const LEFT_FACTOR& l, const RIGHT_FACTOR& r) const
+    {
+        return l.primal() == r.solution[variable];
+    } 
+
+private:
+    const std::size_t variable;
+};
+
+
+
+// }
+
+/*
+   class pairwise_max_factor_message {
+   public:
+   pairwise_max_factor_message(const INDEX _entry) : entry(_entry) {}
+
+   template<typename FACTOR, typename MSG>
+   void RepamRight(FACTOR& r, const MSG& msgs)
+   {
+   for(INDEX i=0; i<r[entry].size(); ++i) {
+   r.linear_potential[entry][i] += msgs[i];
+   }
+   }
+
+   template<typename FACTOR, typename MSG>
+   void RepamLeft(FACTOR& l, const MSG& msgs)
+   {
+   INDEX c=0;
+   for(INDEX i=0; i<l.dim1(); ++i) {
+   for(INDEX j=0; j<l.dim2(); ++j) {
+   l.cost(i,j) += msgs[c++];
+   }
+   } 
             }
 
             template<typename LEFT_FACTOR, typename MSG>
