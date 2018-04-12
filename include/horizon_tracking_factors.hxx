@@ -423,7 +423,7 @@ private:
 
 // }
 
-/*
+
    class pairwise_max_factor_message {
    public:
    pairwise_max_factor_message(const INDEX _entry) : entry(_entry) {}
@@ -504,7 +504,7 @@ private:
         private:
             const INDEX entry;
     };
-    */
+    
 }
 
 #endif // LP_MP_HORIZON_TRACKING_FACTORS_HXX

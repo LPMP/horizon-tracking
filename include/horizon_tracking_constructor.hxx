@@ -11,45 +11,40 @@
 
 namespace LP_MP {
 
-// template<typename MRF_CONSTRUCTOR, typename MAX_FACTOR, typename PAIRWISE_MAX_FACTOR_MESSAGE>
-// class horizon_tracking_constructor : public MRF_CONSTRUCTOR {
-// public:
-// using mrf_constructor = MRF_CONSTRUCTOR;
-// using max_factor_container = MAX_FACTOR;
-// using pairwise_max_factor_message_container = PAIRWISE_MAX_FACTOR_MESSAGE;
+template<typename MRF_CONSTRUCTOR, typename MAX_FACTOR, typename PAIRWISE_MAX_FACTOR_MESSAGE>
+class max_chain_constructor : public MRF_CONSTRUCTOR {
+public:
+using mrf_constructor = MRF_CONSTRUCTOR;
+using max_factor_container = MAX_FACTOR;
+using pairwise_max_factor_message_container = PAIRWISE_MAX_FACTOR_MESSAGE;
 
-// using mrf_constructor::mrf_constructor;
+using mrf_constructor::mrf_constructor;
 
-// template<typename ITERATOR>
-// max_factor_container* add_max_factor_on_pairwise(ITERATOR pairwise_begin, ITERATOR pairwise_end, LP_tree* t)
-// {
-//     const INDEX no_max_vars = std::distance(pairwise_begin, pairwise_end);
-//     vector<INDEX> no_labels(no_vars);
-//     for(auto it = pairwise_begin; it!=pairwise_end; ++it) {
-//         const INDEX i = (*it)[0];
-//         const INDEX i = (*it)[1];
-//         assert(i<j);
-//         no_labels[i] = this->GetNumberOfLabels(i)*this->GetNumberOfLabels(j);
-//     }
-//     auto* f = new max_factor_container(no_labels.begin(), no_labels.end());
-//     this->lp_->AddFactor(f);
+template<typename ITERATOR>
+max_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end, 
+                                    const tensor3_variable<REAL>& maxPairwisePotentials, 
+                                    const tensor3_variable<REAL>& linearPairwisePotentials)
+{
+    const INDEX no_vars = std::distance(var_begin, var_end);
+    vector<INDEX> no_labels;
+    for(auto it = var_begin; it!=var_end; ++it) {
+        const INDEX i = (*it);
+        no_labels.push_back( this->GetNumberOfLabels(i) );
+    }
+    auto* f = new max_factor_container(maxPairwisePotentials, linearPairwisePotentials, no_labels);
+    this->lp_->AddFactor(f);
 
-//     INDEX c=0;
-//     for(auto it = pairwise_begin; it!=pairwise_end; ++it) {
-//         const INDEX i = (*it)[0];
-//         const INDEX i = (*it)[1];
-//         auto* p = this->GetPairwiseFactor(i,j);
-//         auto* m = new pairwise_max_Factor_message_container(c++, p, f);
-//         this->lp_->AddMessage(m);
+    INDEX c=0;
+    for(auto it = var_begin; it+1!=var_end; ++it), ++c) {
+        const INDEX i = (*it);
+        const INDEX j = (*it+1);
+        auto* p = this->GetPairwiseFactor(i,j);
+        this->lp_.add_message<pairwise_max_factor_message>(p, f, c)
+    }
 
-//         if(t != nullptr) {
-//             t->AddMessage(m);
-//         }
-//     } 
-
-//     return f;
-// }
-// };
+    return f;
+}
+};
 
 namespace UAIMaxPotInput {
 
