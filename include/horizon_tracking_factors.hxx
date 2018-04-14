@@ -128,6 +128,17 @@ namespace LP_MP {
 
     }; */
 
+    struct EdgePriority
+    {
+        REAL value;
+        INDEX index;
+    };
+    
+    bool operator< (const EdgePriority& lhs, const EdgePriority& rhs)
+    {
+        return lhs.value < rhs.value;
+    }
+
     class max_potential_on_graph {
 
         struct MaxPotentialElement {
@@ -375,12 +386,10 @@ namespace LP_MP {
                 }
 
                 std::vector<INDEX> sortingOrder = GetPairwisePotsSortingOrder(MaxPairwisePotentials);
-                std::queue<INDEX> edgesToUpdate;
                 for(const auto& currentEdgeToInsert : sortingOrder)
                 {
-                    edgesToUpdate.push(currentEdgeToInsert);
                     MaxPairwisePotentials[currentEdgeToInsert].isAdded = true;         // True allows the arc to be considered for shortest path
-                    bool foundPath = UpdateDistances(edgesToUpdate, distanceFromSource, predecessors);
+                    bool foundPath = UpdateDistances(currentEdgeToInsert, distanceFromSource, predecessors);
                     if (foundPath)
                     {
                         REAL currentCost = MaxPairwisePotentials[currentEdgeToInsert].value + distanceFromSource[NumNodes - 1][0];
@@ -398,13 +407,30 @@ namespace LP_MP {
                 RemoveTerminalNode();
             }
 
-            bool UpdateDistances(std::queue<INDEX>& edgesToUdate, std::vector<std::vector<REAL> >& distanceFromSource, std::vector<INDEX>& predecessors)
+            bool UpdateDistances(INDEX edgeToUpdate, std::vector<std::vector<REAL> >& distanceFromSource, std::vector<INDEX>& predecessors)
             {
                 bool reachedTerminal = false;
-                while(!edgesToUdate.empty())
+                std::priority_queue<EdgePriority> pQueue;  
+                auto currentMaxPot = MaxPairwisePotentials[edgeToUpdate];
+                
+                INDEX n1 = currentMaxPot.n1;
+                INDEX n2 = currentMaxPot.n2;
+                INDEX l1 = currentMaxPot.l1;
+                INDEX l2 = currentMaxPot.l2;
+                REAL currentLinearPot = 0;
+                if (n2 < NumNodes - 1) // As LinearPairwisePotentials does not contain potentials from last node to terminal node
+                        currentLinearPot = LinearPairwisePotentials(n1, l1, l2);
+                
+                REAL offeredDistanceTon2l2 = distanceFromSource[n1][l1] + currentLinearPot;
+
+                pQueue.push(EdgePriority{offeredDistanceTon2l2, edgeToUpdate});
+
+                while(!pQueue.empty())
                 {
-                    INDEX currentEdge = edgesToUdate.front();
-                    edgesToUdate.pop();
+                    EdgePriority currentEdgeStruct = pQueue.top();
+                    pQueue.pop();
+                    INDEX currentEdge = currentEdgeStruct.index;
+                    REAL offeredDistanceTon2l2 = currentEdgeStruct.value;
                     auto currentMaxPot = MaxPairwisePotentials[currentEdge];
                     
                     INDEX n1 = currentMaxPot.n1;
@@ -413,11 +439,6 @@ namespace LP_MP {
                     INDEX l2 = currentMaxPot.l2;
 
                     REAL currentDistanceTon2l2 = distanceFromSource[n2][l2];
-                    REAL currentLinearPot = 0;
-                    if (n2 < NumNodes - 1) // As LinearPairwisePotentials does not contain potentials from last node to terminal node
-                        currentLinearPot = LinearPairwisePotentials(n1,l1, l2);
-
-                    REAL offeredDistanceTon2l2 = distanceFromSource[n1][l1] + currentLinearPot;
                     if (offeredDistanceTon2l2 >= currentDistanceTon2l2)
                         continue;
 
@@ -434,13 +455,22 @@ namespace LP_MP {
 
                     // The distance of n2, l2 has been updated so add all of its immediate children to the queue to be inspected.
                     INDEX firstEdgeToConsider = currentEdge + (NumLabels[n2] - 1 - l2) + (NumLabels[n1] - 1 - l1) * NumLabels[n2] + l2 * NumLabels[n3] + 1;
-                    for (INDEX l3 = 0, currentEdgeToConsider = firstEdgeToConsider; l3 < NumLabels[n2]; l3++, currentEdgeToConsider++)
+                    for (INDEX l3 = 0, currentEdgeToConsider = firstEdgeToConsider; l3 < NumLabels[n3]; l3++, currentEdgeToConsider++)
                     {
                         // Do not consider this potential as it has not been added through sorting yet.
                         if (!MaxPairwisePotentials[currentEdgeToConsider].isAdded)
                             continue;
                         
-                        edgesToUdate.push(currentEdgeToConsider);
+                        auto childMaxPot = MaxPairwisePotentials[currentEdgeToConsider];
+                        assert(childMaxPot.l1 == l2);
+                        assert(childMaxPot.l2 == l3);
+                        REAL currentLinearPot = 0;
+                        if (n3 < NumNodes - 1) // As LinearPairwisePotentials does not contain potentials from last node to terminal node
+                            currentLinearPot = LinearPairwisePotentials(n2, l2, l3);
+                        
+                        REAL offeredDistanceTon3l3 = offeredDistanceTon2l2 + currentLinearPot;
+
+                        pQueue.push(EdgePriority{offeredDistanceTon3l3, currentEdgeToConsider});
                     }
                 }
                 return reachedTerminal;
