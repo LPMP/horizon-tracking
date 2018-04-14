@@ -4,6 +4,7 @@
 #include "vector.hxx"
 #include <queue>
 #include <limits>
+#include "two_dimensional_variable_array.hxx"
 
 namespace LP_MP {
     /*
@@ -22,7 +23,7 @@ namespace LP_MP {
             void assign_max_potential_matrix(const INDEX entry, const MATRIX& costs)
             {
                 INDEX c = 0;
-                for(INDEX i=0; i<costs.dim1(); ++i) {
+            for(INDEX i=0; i<costs.dim1(); ++i) {
                     for(INDEX j=0; j<costs.dim2(); ++j) {
                         max_potential[entry][c++] = costs(i,j);
                     }
@@ -127,6 +128,119 @@ namespace LP_MP {
 
     }; */
 
+    class max_potential_on_graph {
+
+        struct MaxPotentialElement {
+            REAL value;
+            INDEX edgeIndex;
+            INDEX labelIndex;
+            bool isAdded = false;
+        };
+
+        public:       
+            max_potential_on_graph(const two_dim_variable_array<REAL>& maxPotentials, const two_dim_variable_array<REAL>& linearPotentials)
+            : LinearPotentials(linearPotentials)
+            {
+                assert(maxPotentials.size() == linearPotentials.size());
+
+                for(std::size_t currentEdgeIndex = 0; currentEdgeIndex < maxPotentials.size(); ++currentEdgeIndex)
+                 {
+                    assert(maxPotentials[currentEdgeIndex].size() == linearPotentials[currentEdgeIndex].size()); 
+                    
+                    for(std::size_t currentLabelIndex = 0; currentLabelIndex < maxPotentials[currentEdgeIndex].size(); ++currentLabelIndex )
+                    {
+                        MaxPotentials.push_back( { maxPotentials[currentEdgeIndex][currentLabelIndex], currentEdgeIndex, currentLabelIndex, false } );
+                    }
+                }
+            }
+
+
+            REAL LowerBound()
+            {
+                Solve();
+                return solutionObjective;
+                // compute optimal solution and return its cost
+            }
+
+            REAL EvaluatePrimal()
+            {
+                return solutionObjective;
+                // return cost of current solution
+            }
+
+            void MaximizePotentialAndComputePrimal() 
+            {
+                Solve();
+                // compute optimal solution and store it
+            }
+
+        private:
+            std::vector<MaxPotentialElement> MaxPotentials;
+            two_dim_variable_array<REAL> LinearPotentials;
+            REAL solutionObjective;
+
+            void Solve()
+            {
+                std::vector<INDEX> sortingOrder = GetMaxPotsSortingOrder(MaxPotentials);
+                std::set<INDEX> addedEdges;
+                INDEX numEdges = LinearPotentials.size();
+                REAL s = 0;
+                std::vector<INDEX> l(numEdges, INFINITY);
+                double bestObjective = INFINITY;
+                std::vector<INDEX> bestSolutionEdgeLabels(numEdges);
+                std::vector<INDEX> currentSolutionEdgeLabels(numEdges);
+
+                for(const auto& currentElementToInsert : sortingOrder)
+                {
+                    INDEX currentEdgeIndex = MaxPotentials[currentElementToInsert].edgeIndex;
+                    INDEX currentLabelIndex = MaxPotentials[currentElementToInsert].labelIndex;
+                    REAL currentLinearCost = LinearPotentials[currentEdgeIndex][currentLabelIndex];
+                    REAL currentMaxCost =  MaxPotentials[currentElementToInsert].value;
+
+                    // If the edge is not yet covered:
+                    if (addedEdges.count(currentEdgeIndex) == 0)  
+                    {
+                        addedEdges.insert(currentEdgeIndex);
+                        s += currentLinearCost;
+                        l[currentEdgeIndex] = currentLinearCost;
+                        currentSolutionEdgeLabels[currentEdgeIndex] = currentLabelIndex;
+                    }
+                    
+                    // If edge has been added, but current label has lower linear cost. We have two scenarios:
+                    // 1. Graph has not been covered completely in which case we want to increase our max pot. threshold anyway. Thus, if we are gaining 
+                    //      an improvement in linear cost take it.
+                    // 2. Graph is covered completely, but we want to see adding current label can possibly give us any benefit, which will be 
+                    //    checked by the 3rd if condition.
+                    if (currentLinearCost < l[currentEdgeIndex])  
+                    {
+                        s = s - l[currentEdgeIndex] + currentLinearCost;
+                        l[currentEdgeIndex] = currentLinearCost;
+                        currentSolutionEdgeLabels[currentEdgeIndex] = currentLabelIndex;
+                    }
+
+                    // Found another solution which is better than the previous one, in which case mark current solution as the best so far.
+                    if (addedEdges.size() == numEdges && bestObjective > s + currentMaxCost) 
+                    {
+                        bestObjective = s + currentMaxCost;
+                        bestSolutionEdgeLabels = currentSolutionEdgeLabels; //TODO : what to do with the arg-min i.e. the labels?
+                    }
+                }
+
+                solutionObjective  = bestObjective;
+            }
+
+            std::vector<INDEX> GetMaxPotsSortingOrder(const std::vector<MaxPotentialElement>& pots) 
+            {
+                std::vector<INDEX> idx(pots.size());
+                std::iota(idx.begin(), idx.end(), 0);
+
+                std::sort(idx.begin(), idx.end(),
+                    [&pots](INDEX i1, INDEX i2) {return pots[i1].value < pots[i2].value;});
+
+                return idx;
+            }
+
+    };
 
     class max_potential_on_chain {
         struct MaxPairwisePotential {
@@ -275,7 +389,7 @@ namespace LP_MP {
                             bestSolutionCost = currentCost;
                             for (int currentNodeToBackTrack = NumNodes - 2; currentNodeToBackTrack >= 0; currentNodeToBackTrack--)
                             {
-                                solution[currentNodeToBackTrack] = predecessors[currentNodeToBackTrack + 1];
+                                solution[currentNodeToBackTrack] = predecessors[currentNodeToBackTrack + 1];    //TODO : what to do with the arg-min i.e. the labels?
                             }
                         }
                     }
@@ -331,7 +445,6 @@ namespace LP_MP {
                 }
                 return reachedTerminal;
             }
-
 
             std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<MaxPairwisePotential>& pots) 
             {
