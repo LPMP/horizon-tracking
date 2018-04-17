@@ -26,7 +26,7 @@ max_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end,
                                     const tensor3_variable<REAL>& linearPairwisePotentials)
 {
     const INDEX no_vars = std::distance(var_begin, var_end);
-    vector<INDEX> no_labels;
+    std::vector<INDEX> no_labels;
     for(auto it = var_begin; it!=var_end; ++it) {
         const INDEX i = (*it);
         no_labels.push_back( this->GetNumberOfLabels(i) );
@@ -35,11 +35,11 @@ max_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end,
     this->lp_->AddFactor(f);
 
     INDEX c=0;
-    for(auto it = var_begin; it+1!=var_end; ++it), ++c) {
+    for(auto it = var_begin; it+1!=var_end; ++it, ++c) {
         const INDEX i = (*it);
         const INDEX j = (*it+1);
         auto* p = this->GetPairwiseFactor(i,j);
-        this->lp_.add_message<pairwise_max_factor_message>(p, f, c)
+        this->lp_.template add_message<pairwise_max_factor_message_container>(p, f, c);
     }
 
     return f;
@@ -223,6 +223,168 @@ namespace UAIMaxPotInput {
       std::vector<MaxPotInput> input;
       bool read_suc = problem.parse< grammar, action >(input);
       return read_suc;
+   }
+
+   bool ParseProblemGridAndDecomposeToChains(const std::string& filename)
+   {
+      // LP_MP::UaiMrfInput::ParseProblem(filename, solver?);
+        std::cout << "parsing " << filename << "\n";
+        pegtl::file_parser problem(filename);
+        std::vector<MaxPotInput> input;
+        bool read_suc = problem.parse< grammar, action >(input);
+        assert(read_suc);
+        assert(input.size() == 2); // One max potential and one linear potential field
+        INDEX numNodes = input[0].number_of_variables_;
+        INDEX xEdgeDistance = 1;
+        INDEX yEdgeDistance = 0;
+        INDEX horizLastNode = 0;
+        INDEX horizLength = 0;
+        INDEX vertLastNode = 0;
+        INDEX vertLength = 0;
+        for (const auto& currentCliqueScope : input[0].clique_scopes_)
+        {
+            if (currentCliqueScope.size() == 1)
+                continue;
+
+            assert(currentCliqueScope.size() <= 2);
+            INDEX currentEdgeDistance = currentCliqueScope[1] - currentCliqueScope[0];
+            if (yEdgeDistance == 0 && currentEdgeDistance != xEdgeDistance)
+                yEdgeDistance = currentEdgeDistance;
+                
+            else if (currentEdgeDistance != xEdgeDistance)
+                assert(yEdgeDistance == currentEdgeDistance);
+            
+            if (currentCliqueScope[0] == horizLastNode && currentEdgeDistance == xEdgeDistance)
+            {
+                horizLength++;
+                horizLastNode = currentCliqueScope[1];
+            }
+
+            if (currentCliqueScope[0] == vertLastNode && currentEdgeDistance == yEdgeDistance)
+            {
+                vertLength++;
+                vertLastNode = currentCliqueScope[1];
+            }
+        }
+        INDEX gridSizeX = horizLength + 1;
+        INDEX gridSizeY = vertLength + 1;
+        INDEX numChains = gridSizeX + gridSizeY;
+        if (gridSizeX == 1 || gridSizeY == 1)
+            numChains = 1;
+
+        std::vector<std::set<INDEX>> chains(numChains);
+        for (INDEX currentChain = 0; currentChain < numChains; currentChain++)
+        {
+            if (currentChain < gridSizeY)
+            {
+                for (INDEX i = 0; i < gridSizeX; i++)
+                    chains[currentChain].insert(i + currentChain * gridSizeX);
+            }
+
+            else
+            {
+                for (INDEX i = 0; i < gridSizeY; i++)
+                    chains[currentChain].insert(i * gridSizeX + currentChain - gridSizeY);
+            }
+        }
+
+        for (const auto& currentChain : chains)
+        {
+            std::vector<std::vector<INDEX>> functionTableSizes;
+
+            for (auto currentNodeItr = currentChain.begin(); currentNodeItr != std::prev(currentChain.end()); ++currentNodeItr)
+            {
+                INDEX l1Size = input[0].cardinality_[*currentNodeItr];
+                INDEX l2Size = input[0].cardinality_[*std::next(currentNodeItr, 1)];
+                //Assuming equivalent max potential and linear potential graphs:
+                assert(input[0].cardinality_[*currentNodeItr] == input[1].cardinality_[*currentNodeItr]);
+                assert(input[0].cardinality_[*std::next(currentNodeItr, 1)] == input[1].cardinality_[*std::next(currentNodeItr, 1)]);
+                functionTableSizes.push_back(std::vector<INDEX>{l1Size, l2Size});
+            }
+
+            tensor3_variable<REAL> linearPairwisePotentials(functionTableSizes.begin(), functionTableSizes.end());
+            tensor3_variable<REAL> maxPairwisePotentials(functionTableSizes.begin(), functionTableSizes.end());
+            
+            for (INDEX currentPotentialsIndex = 0; currentPotentialsIndex < input.size(); currentPotentialsIndex++)
+            { 
+                INDEX cliqueIndexChain = 0;
+                for (INDEX cliqueIndex = 0; cliqueIndex < input[currentPotentialsIndex].clique_scopes_.size(); cliqueIndex++)
+                {
+                    const auto& currentCliqueScope = input[currentPotentialsIndex].clique_scopes_[cliqueIndex];
+
+                    // node potentials:
+                    if (currentCliqueScope.size() == 1)
+                    {
+                        // Check if the current node is present in the current chain, then transfer the unaries to pairwise terms
+                        if (currentChain.count(currentCliqueScope[0]) > 0)
+                        {
+                            INDEX chainDelta = *std::next(currentChain.begin(), 1) - *currentChain.begin();
+                            INDEX edgeIndexToRight = (currentCliqueScope[0] - *currentChain.begin()) / chainDelta;
+                            if (edgeIndexToRight < currentChain.size() - 1)
+                            {
+                                // Send to the edges on the right:
+                                INDEX numStatesCurrentNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0]];
+                                INDEX numStatesNextNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0] + chainDelta];
+                                for (INDEX l1 = 0; l1 < numStatesCurrentNode; l1++)
+                                {
+                                    for (INDEX l2 = 0; l2 < numStatesNextNode; l2++)
+                                    {
+                                        if (currentPotentialsIndex == 0)
+                                            linearPairwisePotentials(edgeIndexToRight, l1, l2) = input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
+                                        else
+                                            maxPairwisePotentials(edgeIndexToRight, l1, l2) = input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                // Send to the left edges for the corner nodes:
+                                INDEX edgeIndexToLeft = edgeIndexToRight - 1;
+                                INDEX numStatesCurrentNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0]];
+                                INDEX numStatesPrevNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0] - chainDelta];
+                                for (INDEX l2 = 0; l2 < numStatesCurrentNode; l2++)
+                                {
+                                    for (INDEX l1 = 0; l1 < numStatesPrevNode; l1++)
+                                    {
+                                        if (currentPotentialsIndex == 0)
+                                            linearPairwisePotentials(edgeIndexToLeft, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
+                                        else
+                                            maxPairwisePotentials(edgeIndexToLeft, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
+                                    }
+                                }
+
+                            }
+                        }    
+                        continue;   
+                    }
+
+                    // edge potentials:
+                    if (currentChain.count(currentCliqueScope[0]) == 0 || 
+                        currentChain.count(currentCliqueScope[1]) == 0) 
+                        continue;   // Current clique is not present in the current chain.
+
+                    INDEX dim23InputIndex = 0;
+                    for (INDEX l1 = 0; l1 < input[currentPotentialsIndex].cardinality_[currentCliqueScope[0]]; l1++)
+                    {
+                        for (INDEX l2 = 0; l2 < input[currentPotentialsIndex].cardinality_[currentCliqueScope[1]]; l2++)
+                        {
+                            if (currentPotentialsIndex == 0)
+                                linearPairwisePotentials(cliqueIndexChain, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][dim23InputIndex];
+                            else
+                                maxPairwisePotentials(cliqueIndexChain, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][dim23InputIndex];
+
+                            dim23InputIndex++;
+                        }
+                    }
+                    cliqueIndexChain++;
+                }
+            }
+
+            max_chain_constructor newChain;
+            newChain.add_max_chain(currentChain.begin(), currentChain.end(), maxPairwisePotentials, linearPairwisePotentials);
+        }
+
+        return read_suc;
    }
 }
 }

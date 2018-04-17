@@ -188,6 +188,7 @@ namespace LP_MP {
         private:
             std::vector<MaxPotentialElement> MaxPotentials;
             two_dim_variable_array<REAL> LinearPotentials;
+            std::vector<INDEX> solution;
             REAL solutionObjective;
 
             void Solve()
@@ -238,6 +239,7 @@ namespace LP_MP {
                 }
 
                 solutionObjective  = bestObjective;
+                solution = bestSolutionEdgeLabels;
             }
 
             std::vector<INDEX> GetMaxPotsSortingOrder(const std::vector<MaxPotentialElement>& pots) 
