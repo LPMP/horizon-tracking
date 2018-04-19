@@ -166,14 +166,14 @@ namespace LP_MP {
             }
 
 
-            REAL LowerBound()
+            REAL LowerBound() const
             {
                 Solve();
                 return solutionObjective;
                 // compute optimal solution and return its cost
             }
 
-            REAL EvaluatePrimal()
+            REAL EvaluatePrimal() const
             {
                 return solutionObjective;
                 // return cost of current solution
@@ -188,10 +188,10 @@ namespace LP_MP {
         private:
             std::vector<MaxPotentialElement> MaxPotentials;
             two_dim_variable_array<REAL> LinearPotentials;
-            std::vector<INDEX> solution;
-            REAL solutionObjective;
+            mutable std::vector<INDEX> solution;
+            mutable REAL solutionObjective;
 
-            void Solve()
+            void Solve() const
             {
                 std::vector<INDEX> sortingOrder = GetMaxPotsSortingOrder(MaxPotentials);
                 std::set<INDEX> addedEdges;
@@ -242,7 +242,7 @@ namespace LP_MP {
                 solution = bestSolutionEdgeLabels;
             }
 
-            std::vector<INDEX> GetMaxPotsSortingOrder(const std::vector<MaxPotentialElement>& pots) 
+            std::vector<INDEX> GetMaxPotsSortingOrder(const std::vector<MaxPotentialElement>& pots) const
             {
                 std::vector<INDEX> idx(pots.size());
                 std::iota(idx.begin(), idx.end(), 0);
@@ -284,14 +284,14 @@ namespace LP_MP {
             }
 
 
-            REAL LowerBound()
+            REAL LowerBound() const
             {
                 Solve();
                 return solutionObjective;
                 // compute optimal solution and return its cost
             }
 
-            REAL EvaluatePrimal()
+            REAL EvaluatePrimal() const
             {
                 return solutionObjective;
                 // return cost of current solution
@@ -331,14 +331,14 @@ namespace LP_MP {
             } 
 
             tensor3_variable<REAL> LinearPairwisePotentials;
-            std::vector<INDEX> solution;
+            mutable std::vector<INDEX> solution;
 
         private:
             std::vector<MaxPairwisePotential> MaxPairwisePotentials;
             std::vector<INDEX> NumLabels;
 
             int NumNodes;
-            REAL solutionObjective;
+            mutable REAL solutionObjective;
 
             void InsertTerminalNode()
             {
@@ -371,7 +371,7 @@ namespace LP_MP {
                 NumLabels.pop_back();
             }
 
-            void Solve()
+            void Solve() const
             {
                 solution.assign(NumNodes, 0);
                 InsertTerminalNode();
@@ -573,23 +573,23 @@ private:
    public:
    pairwise_max_factor_message(const INDEX _entry) : entry(_entry) {}
 
-   template<typename FACTOR, typename MSG>
-   void RepamRight(FACTOR& r, const MSG& msgs)
-   {
-   for(INDEX i=0; i<r[entry].size(); ++i) {
-   r.linear_potential[entry][i] += msgs[i];
-   }
-   }
+            template<typename FACTOR, typename MSG>
+            void RepamRight(FACTOR& r, const MSG& msgs)
+            {
+                for(INDEX i=0; i<r.LinearPairwisePotentials[entry].size(); ++i) {
+                    r.LinearPairwisePotentials[entry][i] += msgs[i];
+                }
+            }
 
-   template<typename FACTOR, typename MSG>
-   void RepamLeft(FACTOR& l, const MSG& msgs)
-   {
-   INDEX c=0;
-   for(INDEX i=0; i<l.dim1(); ++i) {
-   for(INDEX j=0; j<l.dim2(); ++j) {
-   l.cost(i,j) += msgs[c++];
-   }
-   } 
+            template<typename FACTOR, typename MSG>
+            void RepamLeft(FACTOR& l, const MSG& msgs)
+            {
+                INDEX c=0;
+                for(INDEX i=0; i<l.dim1(); ++i) {
+                    for(INDEX j=0; j<l.dim2(); ++j) {
+                        l.cost(i,j) += msgs[c++];
+                    }
+                } 
             }
 
             template<typename LEFT_FACTOR, typename MSG>
@@ -617,8 +617,8 @@ private:
                 const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
                 if(left_primal < l.size()) {
                     const bool changed = (left_primal != r.primal[entry]);
-                    l.primal()[0] = r.primal[entry] / l.dim1();
-                    l.primal()[1] = r.primal[entry] % l.dim1();
+                    l.primal()[0] = r.solution[entry] / l.dim1();
+                    l.primal()[1] = r.solution[entry] % l.dim1();
                     return changed;
                 } else {
                     return false;
@@ -630,7 +630,7 @@ private:
             {
                 const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
                 if(r.primal() < r.no_labels(entry)) {
-                    const bool changed = (left_primal != r.primal[entry]);
+                    const bool changed = (left_primal != r.solution[entry]);
                     r.primal[entry] = left_primal;
                     return changed;
                 } else {
@@ -642,7 +642,7 @@ private:
             bool CheckPrimalConsistency(const LEFT_FACTOR& l, const RIGHT_FACTOR& r) const
             {
                 const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
-                return left_primal == r.primal[entry];
+                return left_primal == r.solution[entry];
             } 
 
 
