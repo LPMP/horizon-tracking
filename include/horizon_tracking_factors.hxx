@@ -281,6 +281,8 @@ namespace LP_MP {
                         }
                     }
                 }
+
+                InsertTerminalNode();
             }
 
 
@@ -334,8 +336,9 @@ namespace LP_MP {
             mutable std::vector<INDEX> solution;
 
         private:
-            std::vector<MaxPairwisePotential> MaxPairwisePotentials;
+            mutable std::vector<MaxPairwisePotential> MaxPairwisePotentials;
             std::vector<INDEX> NumLabels;
+            mutable std::vector<std::array<REAL,2>> marginals_;// max potential, minimum linear potential
 
             int NumNodes;
             mutable REAL solutionObjective;
@@ -373,8 +376,7 @@ namespace LP_MP {
 
             void Solve() const
             {
-                solution.assign(NumNodes, 0);
-                InsertTerminalNode();
+                solution.assign(NumNodes - 1, 0);              // -1 for terminal node.
                 REAL bestSolutionCost = INFINITY;
                 std::vector<INDEX> predecessors(NumNodes);    // For each node, store the label of the previous node
                 std::vector<std::vector<REAL> > distanceFromSource(NumNodes);
@@ -395,6 +397,7 @@ namespace LP_MP {
                     if (foundPath)
                     {
                         REAL currentCost = MaxPairwisePotentials[currentEdgeToInsert].value + distanceFromSource[NumNodes - 1][0];
+                        marginals_.push_back({MaxPairwisePotentials[currentEdgeToInsert].value, currentCost});
                         if (currentCost < bestSolutionCost)
                         {
                             bestSolutionCost = currentCost;
@@ -406,10 +409,9 @@ namespace LP_MP {
                     }
                 }
                 solutionObjective = bestSolutionCost;
-                RemoveTerminalNode();
             }
 
-            bool UpdateDistances(INDEX edgeToUpdate, std::vector<std::vector<REAL> >& distanceFromSource, std::vector<INDEX>& predecessors)
+            bool UpdateDistances(INDEX edgeToUpdate, std::vector<std::vector<REAL> >& distanceFromSource, std::vector<INDEX>& predecessors) const
             {
                 bool reachedTerminal = false;
                 std::priority_queue<EdgePriority> pQueue;  
@@ -478,7 +480,7 @@ namespace LP_MP {
                 return reachedTerminal;
             }
 
-            std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<MaxPairwisePotential>& pots) 
+            std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<MaxPairwisePotential>& pots) const
             {
                 std::vector<INDEX> idx(pots.size());
                 std::iota(idx.begin(), idx.end(), 0);
@@ -616,7 +618,7 @@ private:
             {
                 const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
                 if(left_primal < l.size()) {
-                    const bool changed = (left_primal != r.primal[entry]);
+                    const bool changed = (left_primal != r.solution[entry]);
                     l.primal()[0] = r.solution[entry] / l.dim1();
                     l.primal()[1] = r.solution[entry] % l.dim1();
                     return changed;
@@ -629,9 +631,9 @@ private:
             bool ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
             {
                 const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
-                if(r.primal() < r.no_labels(entry)) {
+                if(r.solution() < r.NumLabels[entry]) { // is it r.solution[entry] ?
                     const bool changed = (left_primal != r.solution[entry]);
-                    r.primal[entry] = left_primal;
+                    r.solution[entry] = left_primal;
                     return changed;
                 } else {
                     return false;
