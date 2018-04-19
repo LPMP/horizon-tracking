@@ -5,7 +5,9 @@
 #include "LP_MP.h"
 #include "simplex_factor.hxx"
 #include "simplex_marginalization_message.hxx"
+#include "horizon_tracking_factors.hxx"
 #include "mrf_problem_construction.hxx"
+#include "horizon_tracking_constructor.hxx"
 
 #include "parse_rules.h"
 
@@ -25,9 +27,9 @@ struct FMC_HORIZON_TRACKING {
    using FactorList = meta::list< UnaryFactor, PairwiseFactor, max_chain_container >;
    using MessageList = meta::list< UnaryPairwiseMessageLeftContainer, UnaryPairwiseMessageRightContainer, pairwise_max_message_container >;
 
-   using mrf = StandardMrfConstructor<FMC_HORIZON_TRACKING,0,1,0,1>;
-   using horizon_tracking_constructor<mrf, max_chain_container, pairwise_max_message_container>;
-   using ProblemDecompositionList = meta::list<horizon_tracking_constructor>;
+   using mrf_constructor = StandardMrfConstructor<FMC_HORIZON_TRACKING,0,1,0,1>;
+   using constructor = max_chain_constructor<mrf_constructor, max_chain_container, pairwise_max_message_container>;
+   using ProblemDecompositionList = meta::list<constructor>;
 };
 
 }

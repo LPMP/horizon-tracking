@@ -35,11 +35,11 @@ max_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end,
     this->lp_->AddFactor(f);
 
     INDEX c=0;
-    for(auto it = var_begin; it+1!=var_end; ++it, ++c) {
+    for(auto it = var_begin; std::next(it, 1)!=var_end; ++it, ++c) {
         const INDEX i = (*it);
         const INDEX j = (*it+1);
         auto* p = this->GetPairwiseFactor(i,j);
-        this->lp_.template add_message<pairwise_max_factor_message_container>(p, f, c);
+        this->lp_->template add_message<pairwise_max_factor_message_container>(p, f, c);
     }
 
     return f;
@@ -225,8 +225,11 @@ namespace UAIMaxPotInput {
       return read_suc;
    }
 
-   bool ParseProblemGridAndDecomposeToChains(const std::string& filename)
+   template<typename SOLVER>
+   bool ParseProblemGridAndDecomposeToChains(SOLVER& s, const std::string& filename)
    {
+       auto& chain_constructor = s.template GetProblemConstructor<0>();
+
       // LP_MP::UaiMrfInput::ParseProblem(filename, solver?);
         std::cout << "parsing " << filename << "\n";
         pegtl::file_parser problem(filename);
@@ -380,12 +383,13 @@ namespace UAIMaxPotInput {
                 }
             }
 
-            max_chain_constructor newChain;
-            newChain.add_max_chain(currentChain.begin(), currentChain.end(), maxPairwisePotentials, linearPairwisePotentials);
+            chain_constructor.add_max_chain(currentChain.begin(), currentChain.end(), maxPairwisePotentials, linearPairwisePotentials);
         }
 
         return read_suc;
    }
+
+   
 }
 }
 
