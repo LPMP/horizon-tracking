@@ -28,7 +28,13 @@ int main()
     MaxPairwisePotentials(1,1,2) = 6;
 
     {
-        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels);
+        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, true);
+        REAL objective = chain.LowerBound();
+        test(objective == 1);
+    }
+
+    {   
+        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, false);
         REAL objective = chain.LowerBound();
         test(objective == 1);
     }
@@ -49,7 +55,12 @@ int main()
     LinearPairwisePotentials(1,1,2) = 0;
 
     {
-        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels);
+        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, true);
+        REAL objective = chain.LowerBound();
+        test(objective == 6);
+    }
+    {
+        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, false);
         REAL objective = chain.LowerBound();
         test(objective == 6);
     }
@@ -58,7 +69,13 @@ int main()
     LinearPairwisePotentials(1,0,2) = 1.5;
 
     {
-        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels);
+        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, true);
+        REAL objective = chain.LowerBound();
+        test(objective == 4);
+    }
+
+    {
+        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, false);
         REAL objective = chain.LowerBound();
         test(objective == 4);
     }

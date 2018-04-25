@@ -5,6 +5,8 @@
 #include <queue>
 #include <limits>
 #include "two_dimensional_variable_array.hxx"
+#include <unordered_set>
+#include <cmath>
 
 namespace LP_MP {
     /*
@@ -178,7 +180,7 @@ namespace LP_MP {
                 return solutionObjective;
                 // return cost of current solution
             }
-
+ 
             void MaximizePotentialAndComputePrimal() 
             {
                 Solve();
@@ -194,7 +196,7 @@ namespace LP_MP {
             void Solve() const
             {
                 std::vector<INDEX> sortingOrder = GetMaxPotsSortingOrder(MaxPotentials);
-                std::set<INDEX> addedEdges;
+                std::unordered_set<INDEX> addedEdges;
                 INDEX numEdges = LinearPotentials.size();
                 REAL s = 0;
                 std::vector<INDEX> l(numEdges, INFINITY);
@@ -255,6 +257,226 @@ namespace LP_MP {
 
     };
 
+class ShortestPathTreeInChain {
+        struct Node
+        {
+            bool parentAssigned = false;
+            INDEX parentLabel;
+            std::unordered_set<INDEX> childLabels;
+            std::unordered_set<INDEX> possibleChildLabels;
+            REAL distance = std::numeric_limits<REAL>::infinity();
+            bool status = true; // 1 -> Closed.
+        };
+
+        struct SpTreeEdge
+        {
+            INDEX n1, l1, n2, l2;
+            REAL maxPotValue;
+        };
+
+        bool IsEqual(const SpTreeEdge& lhs, const SpTreeEdge& rhs)
+        {
+            return lhs.n1 == rhs.n1 && lhs.n2 == rhs.n2 &&
+                    lhs.l1 == rhs.l1 && lhs.l2 == rhs.l2 &&
+                    lhs.maxPotValue == rhs.maxPotValue;
+        }
+
+        struct SpTreeEdgeCompByn1
+        {
+            bool operator()(const SpTreeEdge& lhs, const SpTreeEdge& rhs)
+            {
+                return lhs.n1 < rhs.n1;
+            }
+        };
+
+        struct SpTreeEdgeCompByMaxPot
+        {
+            bool operator()(const SpTreeEdge& lhs, const SpTreeEdge& rhs)
+            {
+                return lhs.maxPotValue > rhs.maxPotValue;
+            }
+        };
+
+    private:
+        std::vector<std::vector<Node>> ChainNodes;
+        std::set<SpTreeEdge, SpTreeEdgeCompByMaxPot> treeEdgeIndicesAndMaxPots;
+        std::priority_queue<SpTreeEdge, std::vector<SpTreeEdge>, SpTreeEdgeCompByn1> edgesToRemove; 
+
+    public:
+        ShortestPathTreeInChain(INDEX numNodes)
+        {   
+            ChainNodes.resize(numNodes);
+        }
+
+        void SetLabels(INDEX nodeIndex, INDEX numLabels)
+        {
+            ChainNodes[nodeIndex].resize(numLabels);
+            if (nodeIndex == 0)
+            {
+                ChainNodes[0][0].distance = 0;
+                assert(numLabels == 1);
+            }
+        }
+
+        void SetPossibleChildLabels(INDEX n1, INDEX l2Max)
+        {
+            for (INDEX l1 = 0; l1 < ChainNodes[n1].size(); l1++)
+            {
+                for (INDEX l2 = 0; l2 < l2Max; l2++)
+                {
+                    ChainNodes[n1][l1].possibleChildLabels.insert(l2);
+                }
+            }
+        }
+
+        SpTreeEdge GetMaxPotValueInTree() const
+        {
+            return *treeEdgeIndicesAndMaxPots.begin();
+        }
+
+        bool CheckParentForShortestPath(INDEX currentNode, INDEX currentLabel, INDEX previousLabel, REAL currentEdgeDistance, REAL currentMaxPotValue)
+        {
+            assert(currentNode > 0);
+            REAL currentOfferedDistance = ChainNodes[currentNode - 1][previousLabel].distance + currentEdgeDistance;
+
+            if (!ChainNodes[currentNode][currentLabel].parentAssigned ||
+                currentOfferedDistance < ChainNodes[currentNode][currentLabel].distance)
+            {
+                SetParent(currentNode, currentLabel, previousLabel, currentOfferedDistance, currentMaxPotValue); 
+                return true;
+            }
+            return false;
+        }
+
+        void SetParent(INDEX currentNode, INDEX currentLabel, INDEX parentLabel, REAL newDistance, REAL maxPotValue)
+        {
+            if (ChainNodes[currentNode][currentLabel].parentAssigned)
+            {
+                INDEX previousParent = ChainNodes[currentNode][currentLabel].parentLabel;
+                if (ChainNodes[currentNode - 1][previousParent].childLabels.count(currentLabel) > 0)
+                    ChainNodes[currentNode - 1][previousParent].childLabels.erase(currentLabel);
+            }
+
+            ChainNodes[currentNode][currentLabel].parentLabel = parentLabel;
+            ChainNodes[currentNode][currentLabel].distance = newDistance;
+            ChainNodes[currentNode - 1][parentLabel].childLabels.insert(currentLabel);
+            ChainNodes[currentNode][currentLabel].parentAssigned = true;
+            treeEdgeIndicesAndMaxPots.insert({currentNode - 1, parentLabel, currentNode, currentLabel, maxPotValue});
+        }
+
+        void SetStatus(INDEX n, INDEX l, bool status)
+        {
+            ChainNodes[n][l].status = status;
+        }
+
+        bool GetStatusOfNode(INDEX n, INDEX l)
+        {
+            return ChainNodes[n][l].status;
+        } 
+
+        REAL GetDistance(INDEX n, INDEX l) const
+        {
+            return ChainNodes[n][l].distance;
+        }
+
+        REAL IncreaseDistance(INDEX n, INDEX l, REAL value)
+        {
+            ChainNodes[n][l].distance += value;
+        }
+
+        INDEX GetParentLabel(INDEX n, INDEX l) const
+        {
+            return ChainNodes[n][l].parentLabel;
+        }
+
+        std::unordered_set<std::array<INDEX, 2>> GetLocallyAffectedNodes()
+        {
+            std::unordered_set<std::array<INDEX, 2>> locallyAffectedVertices;
+            while (edgesToRemove.size() > 0)
+            {
+                SpTreeEdge currentEdgeToRemove = edgesToRemove.top();
+                edgesToRemove.pop();
+                if (locallyAffectedVertices.count({currentEdgeToRemove.n2, currentEdgeToRemove.l2}) > 0)    // Already explored.
+                    continue;
+
+                GetDescendants(currentEdgeToRemove.n2, currentEdgeToRemove.l2, locallyAffectedVertices);
+            }
+            return locallyAffectedVertices;
+        }
+
+        void GetDescendants(INDEX n, INDEX l, std::unordered_set<std::array<INDEX, 2>>& descendants)
+        {
+            std::queue<std::array<INDEX, 2>> toExplore;
+            toExplore.push({n, l});
+            while (toExplore.size() > 0)
+            {
+                std::array<INDEX, 2> nodeAndLabel = toExplore.front();
+                descendants.insert({nodeAndLabel[0], nodeAndLabel[1]});
+                toExplore.pop();
+                for (const auto& currentChildLabel: ChainNodes[nodeAndLabel[0]][nodeAndLabel[1]].childLabels)
+                {
+                    if (descendants.count({nodeAndLabel[0] + 1, currentChildLabel}) > 0)
+                        continue; // TODO: Check if Already explored
+
+                    toExplore.push({nodeAndLabel[0] + 1, currentChildLabel});    
+                }
+            }
+        }
+
+        bool CheckAndPopMaxPotInTree(INDEX n1, INDEX l1, INDEX n2, INDEX l2, REAL maxPotValue)
+        {
+            SpTreeEdge edge{n1, l1, n2, l2, maxPotValue};
+            for (auto it = treeEdgeIndicesAndMaxPots.begin(); it != treeEdgeIndicesAndMaxPots.end(); ++it)
+            {
+                if (IsEqual(*it, edge))
+                {
+                    edgesToRemove.push(edge);
+                    treeEdgeIndicesAndMaxPots.erase(it);
+                    if (ChainNodes[n1][l1].childLabels.count(l2) > 0)
+                        ChainNodes[n1][l1].childLabels.erase(l2);
+
+                    ChainNodes[n2][l2].parentAssigned = false;    
+                    return 1;
+                }
+            }
+
+            return 0;
+        }
+
+        bool isEdgeDeleted(INDEX n1, INDEX l1, INDEX l2)
+        {
+            return ChainNodes[n1][l1].possibleChildLabels.count(l2) == 0;
+        }
+
+        void RemovePossibleEdge(INDEX n1, INDEX l1, INDEX l2)
+        {
+            ChainNodes[n1][l1].possibleChildLabels.erase(l2);
+        }
+
+        bool CheckPathToTerminal()
+        {
+            std::queue<std::array<REAL, 2>> q;
+            q.push({ChainNodes.size() - 1, 0});
+            while (q.size() > 0)
+            {   
+                std::array<REAL, 2> e = q.front();
+                q.pop();
+
+                if (e[0] == 0)
+                    return 1;
+
+                if (!ChainNodes[e[0]][e[1]].parentAssigned)
+                    return 0;
+
+                if (e[0] > 0)
+                    q.push({e[0] - 1, ChainNodes[e[0]][e[1]].parentLabel});
+            }
+            return 1;
+        }
+    };
+
+
+
     class max_potential_on_chain {
         struct MaxPairwisePotential {
             REAL value;
@@ -263,12 +485,34 @@ namespace LP_MP {
             bool isAdded = false;
         };
 
+        struct AffectedVertex
+        {
+            INDEX n;
+            INDEX l;
+            INDEX parentLabel;
+            REAL delta;
+            REAL newDistance;
+            REAL maxPot;
+            bool operator<(const AffectedVertex& rhs) const
+            {
+                if (delta > rhs.delta)
+                    return 1;
+
+                if (delta == rhs.delta)
+                    return newDistance > rhs.newDistance;
+
+                return 0;
+            }           
+        };
+        
         public:       
-            max_potential_on_chain(const tensor3_variable<REAL>& maxPairwisePotentials, const tensor3_variable<REAL>& linearPairwisePotentials, const std::vector<INDEX>& numLabels)
+            max_potential_on_chain(const tensor3_variable<REAL>& maxPairwisePotentials, const tensor3_variable<REAL>& linearPairwisePotentials, const std::vector<INDEX>& numLabels, bool useEdgeDeletion = true)
             :
                 LinearPairwisePotentials(linearPairwisePotentials),
+                MaxPairwisePotentials(maxPairwisePotentials),
                 NumNodes(numLabels.size()),
-                NumLabels(numLabels)
+                NumLabels(numLabels),
+                UseEdgeDeletion(useEdgeDeletion)
             {
                 assert(maxPairwisePotentials.dim1() + 1 == numLabels.size()); 
                 assert(maxPairwisePotentials.dim1() == linearPairwisePotentials.dim1());
@@ -277,7 +521,7 @@ namespace LP_MP {
                     assert(maxPairwisePotentials.dim2(n1) == linearPairwisePotentials.dim2(n1) && maxPairwisePotentials.dim3(n1) == linearPairwisePotentials.dim3(n1));
                     for(std::size_t i=0; i<maxPairwisePotentials.dim2(n1); ++i) {
                         for(std::size_t j=0; j<maxPairwisePotentials.dim3(n1); ++j) {
-                            MaxPairwisePotentials.push_back( {maxPairwisePotentials(n1,i,j), n1, n1+1, i, j, false} );
+                            MaxPotentials1D.push_back( {maxPairwisePotentials(n1,i,j), n1, n1+1, i, j, false} );
                         }
                     }
                 }
@@ -301,7 +545,7 @@ namespace LP_MP {
 
             void MaximizePotentialAndComputePrimal() 
             {
-                Solve();
+                Solve();    
                 // compute optimal solution and store it
             }
 
@@ -334,14 +578,18 @@ namespace LP_MP {
 
             tensor3_variable<REAL> LinearPairwisePotentials;
             mutable std::vector<INDEX> solution;
+        
+        protected:
+                std::vector<INDEX> NumLabels;
 
         private:
-            mutable std::vector<MaxPairwisePotential> MaxPairwisePotentials;
-            std::vector<INDEX> NumLabels;
-            mutable std::vector<std::array<REAL,2>> marginals_;// max potential, minimum linear potential
+            mutable std::vector<MaxPairwisePotential> MaxPotentials1D;
+            tensor3_variable<REAL> MaxPairwisePotentials;
+            mutable std::vector<std::array<REAL,2>> marginals_;// max potential, minimum linear potential TODO: Sort these 
+            bool UseEdgeDeletion;
 
             int NumNodes;
-            mutable REAL solutionObjective;
+            mutable REAL solutionObjective = std::numeric_limits<REAL>::infinity();
 
             void InsertTerminalNode()
             {
@@ -353,8 +601,8 @@ namespace LP_MP {
                     currentPot.n2 = NumNodes;
                     currentPot.l1 = l1;
                     currentPot.l2 = 0;
-                    currentPot.value = 0;
-                    MaxPairwisePotentials.push_back(currentPot);
+                    currentPot.value = std::numeric_limits<REAL>::min();
+                    MaxPotentials1D.push_back(currentPot);
                 }
                 NumLabels.push_back(1); // Terminal Node has one label
                 NumNodes = NumNodes + 1;
@@ -362,12 +610,12 @@ namespace LP_MP {
 
             void RemoveTerminalNode()
             {
-                for (int currentEdgeToRemove = MaxPairwisePotentials.size() - 1; currentEdgeToRemove >= 0; currentEdgeToRemove--)
+                for (int currentEdgeToRemove = MaxPotentials1D.size() - 1; currentEdgeToRemove >= 0; currentEdgeToRemove--)
                 {
-                    if (MaxPairwisePotentials[currentEdgeToRemove].n2 < NumNodes - 1)
+                    if (MaxPotentials1D[currentEdgeToRemove].n2 < NumNodes - 1)
                         break;
 
-                    MaxPairwisePotentials.erase(MaxPairwisePotentials.begin() + currentEdgeToRemove);
+                    MaxPotentials1D.erase(MaxPotentials1D.begin() + currentEdgeToRemove);
                 }
 
                 NumNodes = NumNodes - 1;
@@ -375,6 +623,14 @@ namespace LP_MP {
             }
 
             void Solve() const
+            {
+                if (UseEdgeDeletion)
+                    SolveByEdgeDeletion();
+                else
+                    SolveByEdgeAddition();
+            }
+
+            void SolveByEdgeAddition() const
             {
                 solution.assign(NumNodes - 1, 0);              // -1 for terminal node.
                 REAL bestSolutionCost = INFINITY;
@@ -389,21 +645,21 @@ namespace LP_MP {
                     distanceFromSource[i].resize(NumLabels[i], initialValue);
                 }
 
-                std::vector<INDEX> sortingOrder = GetPairwisePotsSortingOrder(MaxPairwisePotentials);
+                std::vector<INDEX> sortingOrder = GetPairwisePotsSortingOrder(MaxPotentials1D);
                 for(const auto& currentEdgeToInsert : sortingOrder)
                 {
-                    MaxPairwisePotentials[currentEdgeToInsert].isAdded = true;         // True allows the arc to be considered for shortest path
+                    MaxPotentials1D[currentEdgeToInsert].isAdded = true;         // True allows the arc to be considered for shortest path
                     bool foundPath = UpdateDistances(currentEdgeToInsert, distanceFromSource, predecessors);
                     if (foundPath)
                     {
-                        REAL currentCost = MaxPairwisePotentials[currentEdgeToInsert].value + distanceFromSource[NumNodes - 1][0];
-                        marginals_.push_back({MaxPairwisePotentials[currentEdgeToInsert].value, currentCost});
+                        REAL currentCost = MaxPotentials1D[currentEdgeToInsert].value + distanceFromSource[NumNodes - 1][0];
+                        marginals_.push_back({MaxPotentials1D[currentEdgeToInsert].value, currentCost});
                         if (currentCost < bestSolutionCost)
                         {
                             bestSolutionCost = currentCost;
                             for (int currentNodeToBackTrack = NumNodes - 2; currentNodeToBackTrack >= 0; currentNodeToBackTrack--)
                             {
-                                solution[currentNodeToBackTrack] = predecessors[currentNodeToBackTrack + 1];    //TODO : what to do with the arg-min i.e. the labels?
+                                solution[currentNodeToBackTrack] = predecessors[currentNodeToBackTrack + 1];
                             }
                         }
                     }
@@ -414,8 +670,8 @@ namespace LP_MP {
             bool UpdateDistances(INDEX edgeToUpdate, std::vector<std::vector<REAL> >& distanceFromSource, std::vector<INDEX>& predecessors) const
             {
                 bool reachedTerminal = false;
-                std::priority_queue<EdgePriority> pQueue;  
-                auto currentMaxPot = MaxPairwisePotentials[edgeToUpdate];
+                std::queue<EdgePriority> pQueue;  //TODO: Priority queue probably does not offer any benefit for topological sort shortest path.
+                auto currentMaxPot = MaxPotentials1D[edgeToUpdate];
                 
                 INDEX n1 = currentMaxPot.n1;
                 INDEX n2 = currentMaxPot.n2;
@@ -431,11 +687,11 @@ namespace LP_MP {
 
                 while(!pQueue.empty())
                 {
-                    EdgePriority currentEdgeStruct = pQueue.top();
+                    EdgePriority currentEdgeStruct = pQueue.front();
                     pQueue.pop();
                     INDEX currentEdge = currentEdgeStruct.index;
                     REAL offeredDistanceTon2l2 = currentEdgeStruct.value;
-                    auto currentMaxPot = MaxPairwisePotentials[currentEdge];
+                    auto currentMaxPot = MaxPotentials1D[currentEdge];
                     
                     INDEX n1 = currentMaxPot.n1;
                     INDEX n2 = currentMaxPot.n2;
@@ -462,12 +718,12 @@ namespace LP_MP {
                     for (INDEX l3 = 0, currentEdgeToConsider = firstEdgeToConsider; l3 < NumLabels[n3]; l3++, currentEdgeToConsider++)
                     {
                         // Do not consider this potential as it has not been added through sorting yet.
-                        if (!MaxPairwisePotentials[currentEdgeToConsider].isAdded)
+                        if (!MaxPotentials1D[currentEdgeToConsider].isAdded)
                             continue;
                         
-                        auto childMaxPot = MaxPairwisePotentials[currentEdgeToConsider];
+                        auto childMaxPot = MaxPotentials1D[currentEdgeToConsider];
                         assert(childMaxPot.l1 == l2);
-                        assert(childMaxPot.l2 == l3);
+                        assert(childMaxPot.l2 == l3); // Might fail if some of the pairwise potentials are not present thus causing jumps!
                         REAL currentLinearPot = 0;
                         if (n3 < NumNodes - 1) // As LinearPairwisePotentials does not contain potentials from last node to terminal node
                             currentLinearPot = LinearPairwisePotentials(n2, l2, l3);
@@ -480,17 +736,182 @@ namespace LP_MP {
                 return reachedTerminal;
             }
 
-            std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<MaxPairwisePotential>& pots) const
+            std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<MaxPairwisePotential>& pots, bool doReverse = false) const
             {
                 std::vector<INDEX> idx(pots.size());
                 std::iota(idx.begin(), idx.end(), 0);
 
-                std::sort(idx.begin(), idx.end(),
-                    [&pots](INDEX i1, INDEX i2) {return pots[i1].value < pots[i2].value;});
+                if (!doReverse)
+                    std::sort(idx.begin(), idx.end(),
+                        [&pots](INDEX i1, INDEX i2) {return pots[i1].value < pots[i2].value;});
+                
+                else
+                    std::sort(idx.begin(), idx.end(),
+                        [&pots](INDEX i1, INDEX i2) {return pots[i1].value > pots[i2].value;});
 
                 return idx;
             }
+
+            ShortestPathTreeInChain FindAndInitializeSPTree() const
+            {
+                ShortestPathTreeInChain spTree(1 + NumNodes);   // Also includes source node
+                spTree.SetLabels(0, 1);
+                spTree.SetPossibleChildLabels(0, NumLabels[0]);
+
+                for (INDEX i = 0; i < NumNodes; i++)
+                {
+                    spTree.SetLabels(i + 1, NumLabels[i]);
+
+                    if (i < NumNodes - 1)
+                        spTree.SetPossibleChildLabels(i + 1, NumLabels[i + 1]);
+                }
+                
+                for (INDEX n = 0; n < NumNodes; n++)
+                {
+                    for (INDEX l = 0; l < NumLabels[n]; l++)
+                    {
+                        INDEX prevNumLabels = 1;
+                    if (n > 0)
+                            prevNumLabels = NumLabels[n - 1];
+
+                        for (INDEX prevLabel = 0; prevLabel < prevNumLabels; prevLabel++)
+                        {
+                            REAL currentLinearPot = 0;
+                            REAL currentMaxPot = std::numeric_limits<REAL>::min();
+                            if (n < NumNodes - 1 && n > 0)   // Source and Terminal node potentials are not present in it.
+                            {
+                                currentLinearPot = LinearPairwisePotentials(n - 1, prevLabel, l);
+                                currentMaxPot = MaxPairwisePotentials(n - 1, prevLabel, l);
+                            }
+
+                            spTree.CheckParentForShortestPath(n + 1, l, prevLabel, currentLinearPot, currentMaxPot);
+                        }
+                    }
+                }
+
+                return spTree;
+            }
+
+            void SolveByEdgeDeletion() const
+            {
+                ShortestPathTreeInChain spTree = FindAndInitializeSPTree();
+                REAL treeMaxPotValue = spTree.GetMaxPotValueInTree().maxPotValue;
+                marginals_.push_back({treeMaxPotValue, spTree.GetDistance(NumNodes, 1)});
+                solutionObjective = fmin(solutionObjective, treeMaxPotValue + spTree.GetDistance(NumNodes, 0));
+
+                std::vector<INDEX> sortingOrder = GetPairwisePotsSortingOrder(MaxPotentials1D, true);
+                for (INDEX i = 0; i < sortingOrder.size(); i++)
+                {   
+                    auto currentMaxPotEdge = MaxPotentials1D[sortingOrder[i]];
+                    bool wasTreeEdge = spTree.CheckAndPopMaxPotInTree(
+                        currentMaxPotEdge.n1 + 1, currentMaxPotEdge.l1, currentMaxPotEdge.n2 + 1, currentMaxPotEdge.l2, currentMaxPotEdge.value); // +1 due to source node.
+                    spTree.RemovePossibleEdge(currentMaxPotEdge.n1 + 1, currentMaxPotEdge.l1, currentMaxPotEdge.l2);
+
+                    if (wasTreeEdge)
+                    {
+                        std::priority_queue<AffectedVertex> locallyAffectedPQueue;
+                        std::unordered_set<std::array<INDEX, 2>> locallyAffectedVertices = spTree.GetLocallyAffectedNodes();
+                        for (auto const& currentAffectedNode : locallyAffectedVertices)
+                        {   
+                            spTree.SetStatus(currentAffectedNode[0], currentAffectedNode[1], 0);    //mark as open
+                            INDEX bestParentLabel;
+                            REAL bestParentMaxPotValue; 
+                            REAL bestParentDistance = std::numeric_limits<REAL>::infinity();
+                            for (INDEX prevLabel = 0; prevLabel < NumLabels[currentAffectedNode[0] - 2]; prevLabel++)
+                            {
+                                REAL currentLinearPot = 0;
+                                REAL currentMaxPot = std::numeric_limits<REAL>::min();
+                                if (currentAffectedNode[0] - 2 < NumNodes - 2)
+                                {
+                                    currentLinearPot = LinearPairwisePotentials(currentAffectedNode[0] - 2, prevLabel, currentAffectedNode[1]);
+                                    currentMaxPot = MaxPairwisePotentials(currentAffectedNode[0] - 2, prevLabel, currentAffectedNode[1]);
+                                }
+
+                                if (locallyAffectedVertices.count({currentAffectedNode[0] - 1, prevLabel}) > 0 ||
+                                    spTree.isEdgeDeleted(currentAffectedNode[0] - 1, prevLabel, currentAffectedNode[1])
+                                    || !spTree.GetStatusOfNode(currentAffectedNode[0] - 1, prevLabel))
+                                    continue;
+ 
+                                REAL db = spTree.GetDistance(currentAffectedNode[0] - 1, prevLabel); // parent distance
+
+                                REAL newDistance = db + currentLinearPot;
+                                if (newDistance < bestParentDistance)
+                                {
+                                    bestParentLabel = prevLabel;
+                                    bestParentDistance = newDistance;
+                                    bestParentMaxPotValue = currentMaxPot;
+                                }
+                            }
+
+                            if (!std::isinf(bestParentDistance))
+                            {
+                                REAL currentDistance = spTree.GetDistance(currentAffectedNode[0], currentAffectedNode[1]);
+                                locallyAffectedPQueue.push({currentAffectedNode[0], currentAffectedNode[1], bestParentLabel, bestParentDistance - currentDistance, bestParentDistance, bestParentMaxPotValue});
+                            }
+                        }
+
+                        //STEP 3:
+                        std::unordered_set<std::array<INDEX, 2>> toRemoveFromQueue;
+                        while (locallyAffectedPQueue.size() > 0)
+                        {
+                            AffectedVertex bestVertex = locallyAffectedPQueue.top();
+                            locallyAffectedPQueue.pop();
+
+                            if (toRemoveFromQueue.count({bestVertex.n, bestVertex.l}) > 0)
+                                continue;
+                            
+                            spTree.SetParent(bestVertex.n, bestVertex.l, bestVertex.parentLabel, bestVertex.newDistance, bestVertex.maxPot);
+
+                            std::unordered_set<std::array<INDEX, 2>> descendants;
+                            spTree.GetDescendants(bestVertex.n, bestVertex.l, descendants);
+                            for (const auto& currentDesc : descendants)
+                            {
+                                if (currentDesc[0] != bestVertex.n || currentDesc[1] != bestVertex.l)
+                                    spTree.IncreaseDistance(currentDesc[0], currentDesc[1], bestVertex.delta);
+
+                                spTree.SetStatus(currentDesc[0], currentDesc[1], 1); 
+                                toRemoveFromQueue.insert({currentDesc[0], currentDesc[1]});
+                            }
+                            // Relax outgoing edges of just consolidated vertices.
+                            for (const auto& currentDesc : descendants)
+                            {
+                                INDEX nextNode = currentDesc[0] + 1;
+                                if (nextNode > NumNodes)
+                                    continue;  
+                                
+                                for (INDEX nextLabel = 0; nextLabel < NumLabels[nextNode - 1]; nextLabel++)
+                                {
+                                    REAL linearPotentialValue = 0;
+                                    REAL maxPotentialValue = std::numeric_limits<REAL>::min();
+                                    if (currentDesc[0] - 1 < NumNodes - 2)
+                                    {
+                                        REAL maxPotentialValue = MaxPairwisePotentials(currentDesc[0] - 1, currentDesc[1], nextLabel);
+                                        REAL linearPotentialValue = LinearPairwisePotentials(currentDesc[0] - 1, currentDesc[1], nextLabel);
+                                    }
+
+                                    
+                                    if (spTree.GetStatusOfNode(nextNode, nextLabel) ||
+                                    spTree.isEdgeDeleted(currentDesc[0], currentDesc[1], nextLabel))
+                                        continue;
+                                    
+                                    REAL newDistance = spTree.GetDistance(currentDesc[0], currentDesc[1]) + linearPotentialValue;
+                                    REAL delta = newDistance - spTree.GetDistance(nextNode, nextLabel);
+                                    locallyAffectedPQueue.push({nextNode, nextLabel, currentDesc[1], delta, newDistance});
+                                }
+                            }                            
+                        }
+
+                        if (!spTree.CheckPathToTerminal())
+                            return;
+
+                        REAL treeMaxPotValue = spTree.GetMaxPotValueInTree().maxPotValue;
+                        marginals_.push_back({treeMaxPotValue, spTree.GetDistance(NumNodes, 0)});
+                        solutionObjective = fmin(solutionObjective, treeMaxPotValue + spTree.GetDistance(NumNodes, 0));
+                    }
+                }
+            }
     };
+
 
 class unary_max_potential_on_chain_message {
 public:
@@ -566,8 +987,6 @@ private:
     const std::size_t variable;
 };
 
-
-
 // }
 
 
@@ -631,7 +1050,7 @@ private:
             bool ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
             {
                 const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
-                if(r.solution() < r.NumLabels[entry]) { // is it r.solution[entry] ?
+                if(r.solution() < r.NumLabels[entry]) {
                     const bool changed = (left_primal != r.solution[entry]);
                     r.solution[entry] = left_primal;
                     return changed;
