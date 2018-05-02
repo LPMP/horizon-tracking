@@ -8,6 +8,7 @@
 #include "horizon_tracking_factors.hxx"
 #include "mrf_problem_construction.hxx"
 #include "horizon_tracking_constructor.hxx"
+#include "visitors/standard_visitor.hxx"
 
 #include "parse_rules.h"
 
