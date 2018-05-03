@@ -1047,7 +1047,7 @@ class max_potential_on_tree {
             assert(maxPairwisePotentials.dim1() == linearPairwisePotentials.dim1());
         }
 
-        // Call this function whenever linear/max potentials get changed and the bounds need to be recomputed.
+        // Call this function whenever linear/max potentials get changed so the bounds need to be recomputed.
         void PotsChanged()
         {
             boundsDirty = true;
@@ -1071,18 +1071,6 @@ class max_potential_on_tree {
                 boundsDirty = false;
             }
             return MaxPotentialUpperBound;
-        }
-
-        // Call this function whenever linear potentials change.
-        void RecomputeBounds() const
-        {
-            std::array<REAL, 2> bounds = MessagePassingForOnePotential(LinearPairwisePotentials, MaxPairwisePotentials, true);
-            LinearPotentialLowerBound = bounds[0];
-            MaxPotentialUpperBound = bounds[1];
-
-            std::array<REAL, 2> bounds = MessagePassingForOnePotential(MaxPairwisePotentials, LinearPairwisePotentials, false);
-            MaxPotentialLowerBound = bounds[0];
-            LinearPotentialUpperBound = bounds[1]; //TODO: If this is not useful remove it and compute max potential lb only once and store it, as it will not change.
         }
 
         // Returns the marginals of the root node.
@@ -1110,7 +1098,7 @@ class max_potential_on_tree {
                 }
                 for (INDEX l2 = 0; l2 < NumLabels[n2]; l2++)
                 {
-                    LabelStateSpace l2StateSpace = GetL2StateSpaceFromCurrentN1(messages[n1], n1, l2, isN1Leaf);
+                    LabelStateSpace l2StateSpace = GetL2StateSpaceFromCurrentN1(messages[n1], n1, l2, maxPotLowerBound, maxPotUpperBound, isN1Leaf);
                     LabelStateSpace l2PreviousStateSpace = messages[n1][l2];
                     messages[n2][l2] = LabelStateSpace::MergeStateSpace(l2StateSpace, l2PreviousStateSpace);
                 }
@@ -1133,6 +1121,8 @@ class max_potential_on_tree {
                     }
                 }
             }
+
+            // Merge the marginals of all the labels of root node.
             const auto& lastEdge = MessagePassingSchedule.back();
             INDEX rootNode = lastEdge[1];
             LabelStateSpace mergedRootNodeStateSpace;
@@ -1157,7 +1147,19 @@ class max_potential_on_tree {
         mutable REAL LinearPotentialUpperBound; // TODO: Can be computed from max potential message passing and by used to prune paths longer than this bound.
 
         bool boundsDirty = true;
-        LabelStateSpace GetL2StateSpaceFromCurrentN1(const std::vector<LabelStateSpace>& n1Messages, INDEX edgeIndex, INDEX l2, bool isN1Leaf = false, REAL maxPotLB, REAL maxPotUB) const 
+
+        void RecomputeBounds() const
+        {
+            std::array<REAL, 2> bounds = MessagePassingForOnePotential(LinearPairwisePotentials, MaxPairwisePotentials, true);
+            LinearPotentialLowerBound = bounds[0];
+            MaxPotentialUpperBound = bounds[1];
+
+            std::array<REAL, 2> bounds = MessagePassingForOnePotential(MaxPairwisePotentials, LinearPairwisePotentials, false);
+            MaxPotentialLowerBound = bounds[0];
+            LinearPotentialUpperBound = bounds[1]; //TODO: If this is not useful remove it and compute max potential lb only once and store it, as it will not change.
+        }
+
+        LabelStateSpace GetL2StateSpaceFromCurrentN1(const std::vector<LabelStateSpace>& n1Messages, INDEX edgeIndex, INDEX l2, REAL maxPotLB, REAL maxPotUB,  bool isN1Leaf = false) const 
         {
             LabelStateSpace l2StateSpace(maxPotLB, maxPotUB);
             for (INDEX l1 = 0; l1 < n1Messages.size(); l1++)
