@@ -1045,8 +1045,32 @@ class max_potential_on_tree {
         {
             assert(maxPairwisePotentials.dim1() + 1 == numLabels.size()); 
             assert(maxPairwisePotentials.dim1() == linearPairwisePotentials.dim1());
+        }
 
-            RecomputeBounds();
+        // Call this function whenever linear/max potentials get changed and the bounds need to be recomputed.
+        void PotsChanged()
+        {
+            boundsDirty = true;
+        }
+
+        REAL GetMaxPotLowerBound(bool recompute = false)
+        {
+            if (boundsDirty)
+            {
+                RecomputeBounds();
+                boundsDirty = false;
+            }
+            return MaxPotentialLowerBound;
+        }
+
+        REAL GetMaxPotUpperBound(bool recompute = false)
+        {
+            if (boundsDirty)
+            {
+                RecomputeBounds();
+                boundsDirty = false;
+            }
+            return MaxPotentialUpperBound;
         }
 
         // Call this function whenever linear potentials change.
@@ -1062,14 +1086,14 @@ class max_potential_on_tree {
         }
 
         // Returns the marginals of the root node.
-        std::map<REAL, REAL> ComputeMarginalsForBothPotentials() const
+        std::map<REAL, REAL> ComputeMarginalsForBothPotentials(REAL maxPotLowerBound, REAL maxPotUpperBound) const
         {
             std::vector<std::vector<LabelStateSpace>> messages(NumNodes);
             for (INDEX i = 0; i < NumNodes; i++)
             {
                 messages[i].resize(NumLabels[i]);
                 for (INDEX l = 0; l < NumLabels[i]; l++) 
-                    messages[i][l] = LabelStateSpace(MaxPotentialLowerBound, MaxPotentialUpperBound);
+                    messages[i][l] = LabelStateSpace(maxPotLowerBound, maxPotUpperBound);
             }
 
             std::vector<INDEX> totalSentAndReceivedMessages(NumNodes, 0);
@@ -1131,9 +1155,11 @@ class max_potential_on_tree {
         mutable REAL MaxPotentialUpperBound;
         mutable REAL LinearPotentialLowerBound; // Computed by conventional message passing.
         mutable REAL LinearPotentialUpperBound; // TODO: Can be computed from max potential message passing and by used to prune paths longer than this bound.
-        LabelStateSpace GetL2StateSpaceFromCurrentN1(const std::vector<LabelStateSpace>& n1Messages, INDEX edgeIndex, INDEX l2, bool isN1Leaf = false) const 
+
+        bool boundsDirty = true;
+        LabelStateSpace GetL2StateSpaceFromCurrentN1(const std::vector<LabelStateSpace>& n1Messages, INDEX edgeIndex, INDEX l2, bool isN1Leaf = false, REAL maxPotLB, REAL maxPotUB) const 
         {
-            LabelStateSpace l2StateSpace(MaxPotentialLowerBound, MaxPotentialUpperBound);
+            LabelStateSpace l2StateSpace(maxPotLB, maxPotUB);
             for (INDEX l1 = 0; l1 < n1Messages.size(); l1++)
             {
                 REAL edgeMaxPot = MaxPairwisePotentials(edgeIndex, l1, l2);
