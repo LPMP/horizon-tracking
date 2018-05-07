@@ -1096,6 +1096,7 @@ class max_potential_on_tree {
 
             std::vector<INDEX> totalSentAndReceivedMessages(NumNodes, 0);
             std::vector<bool> messageReceived(NumNodes, false);
+            INDEX edgeIndex = 0;
             for (const auto & currentEdge : MessagePassingSchedule) // TODO: Assuming the edge index is the n1 of current edge.
             {
                 INDEX tail = currentEdge[0];
@@ -1108,7 +1109,7 @@ class max_potential_on_tree {
                 }
                 for (INDEX lh = 0; lh < NumLabels[head]; lh++)
                 {
-                    LabelStateSpace lhStateSpace = GetHeadLabelStateSpaceFromCurrentTail(messages[tail], fmin(tail, head), lh, maxPotLowerBound, maxPotUpperBound, head < tail, isTailLeaf);
+                    LabelStateSpace lhStateSpace = GetHeadLabelStateSpaceFromCurrentTail(messages[tail], edgeIndex, lh, maxPotLowerBound, maxPotUpperBound, head < tail, isTailLeaf);
                     LabelStateSpace lhPrevStateSpace = messages[head][lh];
                     messages[head][lh] = LabelStateSpace::MergeStateSpaceFromDifferentNeighbours(lhStateSpace, lhPrevStateSpace);
                 }
@@ -1130,6 +1131,7 @@ class max_potential_on_tree {
                             messages[head][lh].ClearPotentials();
                     }
                 }
+                edgeIndex++;
             }
 
             // Merge the marginals of all the labels of root node.
@@ -1209,6 +1211,7 @@ class max_potential_on_tree {
                 otherMessages[i].resize(NumLabels[i], 0);
             }
 
+            INDEX edgeIndex = 0;
             for (const auto & currentEdge : MessagePassingSchedule) // TODO: Assuming the edge index is the n1 of current edge.
             {
                 INDEX tail = currentEdge[0];
@@ -1219,7 +1222,7 @@ class max_potential_on_tree {
                 }
                 for (INDEX lh = 0; lh < mainMessages[head].size(); lh++)
                 {
-                    std::array<REAL, 2> minMessage = ComputeMessageValue(mainMessages[tail], otherMessages[tail], fmin(head, tail), lh, mainPairwisePots, otherPairwisePots, doConventional, head < tail);
+                    std::array<REAL, 2> minMessage = ComputeMessageValue(mainMessages[tail], otherMessages[tail], edgeIndex, lh, mainPairwisePots, otherPairwisePots, doConventional, head < tail);
                     if (doConventional)
                     {
                         mainMessages[head][lh] += minMessage[0];
@@ -1233,6 +1236,7 @@ class max_potential_on_tree {
                 }
                 messageSent[tail] = true;
                 messageReceived[head] = true;
+                edgeIndex++;
             }
 
             const auto& lastEdge = MessagePassingSchedule.back();
