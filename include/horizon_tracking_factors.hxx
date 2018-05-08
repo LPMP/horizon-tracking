@@ -552,40 +552,51 @@ class ShortestPathTreeInChain {
             template<class ARCHIVE> void serialize_primal(ARCHIVE& ar) { ar(); }
             template<class ARCHIVE> void serialize_dual(ARCHIVE& ar) { ar( LinearPairwisePotentials.data() ); }
 
-            auto export_variables() { return std::tie( LinearPairwisePotentials.data() ); }
+            auto export_variables() { return std::tie( ); }
             void init_primal() {}
             
             template<typename ARRAY>
             void apply(ARRAY& a) const 
             { 
                 std::size_t offset = 0;
-                for(INDEX n=0; n<solution.size()-1; ++n) {
-                    a[offset + solution[n]* LinearPairwisePotentials.dim3(n) + solution[n+1]];
+                for(INDEX n=0; n<solution_.size()-1; ++n) {
+                    a[offset + solution_[n]* LinearPairwisePotentials.dim3(n) + solution_[n+1]];
                     offset += LinearPairwisePotentials.dim2(n) * LinearPairwisePotentials.dim3(n); 
                 }
             }
 
             template<typename EXTERNAL_SOLVER>
-            void construct_constraints(EXTERNAL_SOLVER& s, typename EXTERNAL_SOLVER::vector v) const
+            void construct_constraints(EXTERNAL_SOLVER& s) const
             {
                 assert(false);
             }
             template<typename EXTERNAL_SOLVER>
-            void convert_primal(EXTERNAL_SOLVER& s, typename EXTERNAL_SOLVER::vector v)
+            void convert_primal(EXTERNAL_SOLVER& s)
             {
                 assert(false);
             } 
 
             tensor3_variable<REAL> LinearPairwisePotentials;
-            mutable std::vector<INDEX> solution;
+
+            // setter
+            INDEX& solution(const std::size_t i) { assert(i < solution_.size()); return solution_[i]; }
+            // getter
+            INDEX solution(const std::size_t i) const { assert(i < solution_.size()); return solution_[i]; }
         
+            std::array<REAL,3>& max_potential_marginal(const std::size_t i) { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
+            std::array<REAL,3> max_potential_marginal(const std::size_t i) const { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
+
         protected:
                 std::vector<INDEX> NumLabels;
+                mutable std::vector<INDEX> solution_;
+
 
         private:
             mutable std::vector<MaxPairwisePotential> MaxPotentials1D;
             tensor3_variable<REAL> MaxPairwisePotentials;
-            mutable std::vector<std::array<REAL,2>> marginals_;// max potential, minimum linear potential TODO: Sort these 
+            mutable std::vector<std::array<REAL,3>> max_potential_marginals_; // (i) max potential, (ii) minimum linear potential, (iii) cost of configuration TODO: Sort these 
+
+            // cost = max_potential_marginals_[1] + max_potential_marginals_[2] TODO: remove max potential value from objective calculation
             bool UseEdgeDeletion;
 
             int NumNodes;
@@ -652,8 +663,12 @@ class ShortestPathTreeInChain {
                     bool foundPath = UpdateDistances(currentEdgeToInsert, distanceFromSource, predecessors);
                     if (foundPath)
                     {
-                        REAL currentCost = MaxPotentials1D[currentEdgeToInsert].value + distanceFromSource[NumNodes - 1][0];
-                        marginals_.push_back({MaxPotentials1D[currentEdgeToInsert].value, currentCost});
+                        const std::size_t idx;
+                        REAL current_cost = distanceFromSource[NumNodes - 1][0] + max_potential_marginals_[idx][2];
+                        REAL currentCost = MaxPotentials1D[currentEdgeToInsert].value + distanceFromSource[NumNodes - 1][0]; // TODO: add arbitrary max potential cost
+
+                        // TODO: Initialize max_potential_marginals_ once and then and only update linear potentials
+                        max_potential_marginals_.push_back({MaxPotentials1D[currentEdgeToInsert].value, currentCost});
                         if (currentCost < bestSolutionCost)
                         {
                             bestSolutionCost = currentCost;
@@ -664,7 +679,15 @@ class ShortestPathTreeInChain {
                         }
                     }
                 }
+
+                *std::min_element(max_potential_marginals_.begin(), max_potential_marginals_.end(), [](auto& m1, auto& m2) { return m1[1] + m1[2] < m2[1] + m2[2]; })
                 solutionObjective = bestSolutionCost;
+            }
+
+            REAL objective() const
+            {
+                const auto *std::min_element(max_potential_marginals_.begin(), max_potential_marginals_.end(), [](auto& m1, auto& m2) { return m1[1] + m1[2] < m2[1] + m2[2]; })
+
             }
 
             bool UpdateDistances(INDEX edgeToUpdate, std::vector<std::vector<REAL> >& distanceFromSource, std::vector<INDEX>& predecessors) const
@@ -1151,7 +1174,13 @@ class max_potential_on_tree {
             return rootPotsArray;
         }
 
+        // setter
+        INDEX& solution(const std::size_t i) { assert(i < solution_.size()); return solution_[i]; }
+        // getter
+        INDEX solution(const std::size_t i) const { assert(i < solution_.size()); return solution_[i]; }
+
     private:
+        std::vector<INDEX> solution_;
         tensor3_variable<REAL> MaxPairwisePotentials;
         tensor3_variable<REAL> LinearPairwisePotentials;
         INDEX NumNodes;
@@ -1425,10 +1454,11 @@ private:
             {
                 const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
                 if(left_primal < l.size()) {
-                    const bool changed = (left_primal != r.solution[entry]);
-                    l.primal()[0] = r.solution[entry] / l.dim1();
-                    l.primal()[1] = r.solution[entry] % l.dim1();
-                    return changed;
+                    assert(false);
+                    //const bool changed = (left_primal != r.solution[entry]);
+                    //l.primal()[0] = r.solution[entry] / l.dim1();
+                    //l.primal()[1] = r.solution[entry] % l.dim1();
+                    //return changed;
                 } else {
                     return false;
                 }
@@ -1439,9 +1469,10 @@ private:
             {
                 const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
                 if(r.solution() < r.NumLabels[entry]) {
-                    const bool changed = (left_primal != r.solution[entry]);
-                    r.solution[entry] = left_primal;
-                    return changed;
+                    assert(false);
+                    //const bool changed = (left_primal != r.solution[entry]);
+                    //r.solution[entry] = left_primal;
+                    //return changed;
                 } else {
                     return false;
                 }
@@ -1454,6 +1485,12 @@ private:
                 return left_primal == r.solution[entry];
             } 
 
+            template<typename SOLVER, typename LEFT_FACTOR, typename RIGHT_FACTOR>
+            void construct_constraints(SOLVER& s, 
+                    LEFT_FACTOR& l, typename SOLVER::vector l_left_msg_variables, typename SOLVER::vector l_right_msg_variables, typename SOLVER::matrix l_pairwise_variables, 
+                    RIGHT_FACTOR& r)
+            {
+            }
 
         private:
             const INDEX entry;

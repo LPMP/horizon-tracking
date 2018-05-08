@@ -31,8 +31,7 @@ max_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end,
         const INDEX i = (*it);
         no_labels.push_back( this->GetNumberOfLabels(i) );
     }
-    auto* f = new max_factor_container(maxPairwisePotentials, linearPairwisePotentials, no_labels);
-    this->lp_->AddFactor(f);
+    auto* f = this->lp_->template add_factor<max_factor_container>(maxPairwisePotentials, linearPairwisePotentials, no_labels);
 
     INDEX c=0;
     for(auto it = var_begin; std::next(it, 1)!=var_end; ++it, ++c) {
