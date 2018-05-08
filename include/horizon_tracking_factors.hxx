@@ -526,6 +526,8 @@ class ShortestPathTreeInChain {
                     }
                 }
 
+                MaxPotsSortingOrder = GetPairwisePotsSortingOrder(MaxPotentials1D);
+                solution_.assign(NumNodes, 0);
                 InsertTerminalNode();
             }
 
@@ -541,6 +543,13 @@ class ShortestPathTreeInChain {
             {
                 return solutionObjective;
                 // return cost of current solution
+            }
+
+            REAL objective() const  //TODO: Duplicate to EvaluatePrimal.
+            {
+                // TODO: I think we dont need this now:
+                // const auto *std::min_element(max_potential_marginals_.begin(), max_potential_marginals_.end(), [](auto& m1, auto& m2) { return m1[1] + m1[2] < m2[1] + m2[2]; })
+                return solutionObjective;
             }
 
             void MaximizePotentialAndComputePrimal() 
@@ -590,11 +599,12 @@ class ShortestPathTreeInChain {
                 std::vector<INDEX> NumLabels;
                 mutable std::vector<INDEX> solution_;
 
-
         private:
             mutable std::vector<MaxPairwisePotential> MaxPotentials1D;
+            std::vector<INDEX> MaxPotsSortingOrder;
             tensor3_variable<REAL> MaxPairwisePotentials;
             mutable std::vector<std::array<REAL,3>> max_potential_marginals_; // (i) max potential, (ii) minimum linear potential, (iii) cost of configuration TODO: Sort these 
+            bool MaxPotMarginalsInitialized = false;
 
             // cost = max_potential_marginals_[1] + max_potential_marginals_[2] TODO: remove max potential value from objective calculation
             bool UseEdgeDeletion;
@@ -639,11 +649,12 @@ class ShortestPathTreeInChain {
                     SolveByEdgeDeletion();
                 else
                     SolveByEdgeAddition();
+
+                MaxPotMarginalsInitialized = true;
             }
 
             void SolveByEdgeAddition() const
             {
-                solution.assign(NumNodes - 1, 0);              // -1 for terminal node.
                 REAL bestSolutionCost = INFINITY;
                 std::vector<INDEX> predecessors(NumNodes);    // For each node, store the label of the previous node
                 std::vector<std::vector<REAL> > distanceFromSource(NumNodes);
@@ -656,39 +667,42 @@ class ShortestPathTreeInChain {
                     distanceFromSource[i].resize(NumLabels[i], initialValue);
                 }
 
-                std::vector<INDEX> sortingOrder = GetPairwisePotsSortingOrder(MaxPotentials1D);
-                for(const auto& currentEdgeToInsert : sortingOrder)
+                INDEX currentMaxPotIndex = 0;
+                for(const auto& currentEdgeToInsert : MaxPotsSortingOrder)
                 {
                     MaxPotentials1D[currentEdgeToInsert].isAdded = true;         // True allows the arc to be considered for shortest path
                     bool foundPath = UpdateDistances(currentEdgeToInsert, distanceFromSource, predecessors);
                     if (foundPath)
                     {
-                        const std::size_t idx;
-                        REAL current_cost = distanceFromSource[NumNodes - 1][0] + max_potential_marginals_[idx][2];
-                        REAL currentCost = MaxPotentials1D[currentEdgeToInsert].value + distanceFromSource[NumNodes - 1][0]; // TODO: add arbitrary max potential cost
+                        REAL currentCost =  distanceFromSource[NumNodes - 1][0]; 
 
-                        // TODO: Initialize max_potential_marginals_ once and then and only update linear potentials
-                        max_potential_marginals_.push_back({MaxPotentials1D[currentEdgeToInsert].value, currentCost});
-                        if (currentCost < bestSolutionCost)
+                        if (!MaxPotMarginalsInitialized)
+                            max_potential_marginals_.push_back({MaxPotentials1D[currentEdgeToInsert].value, currentCost, 0});
+                        
+                        else
+                        {
+                            assert(MaxPotentials1D[currentEdgeToInsert].value == max_potential_marginals_[currentMaxPotIndex][0]);
+                            currentCost += max_potential_marginals_[currentMaxPotIndex][2];
+                            max_potential_marginals_[currentMaxPotIndex][1] = distanceFromSource[NumNodes - 1][0];
+                            currentMaxPotIndex++;
+                        }
+
+                        if (currentCost < bestSolutionCost)     //TODO: So the solution we will get will not consider the max potential values, even for first iteration.
                         {
                             bestSolutionCost = currentCost;
                             for (int currentNodeToBackTrack = NumNodes - 2; currentNodeToBackTrack >= 0; currentNodeToBackTrack--)
                             {
-                                solution[currentNodeToBackTrack] = predecessors[currentNodeToBackTrack + 1];
+                                solution_[currentNodeToBackTrack] = predecessors[currentNodeToBackTrack + 1];
                             }
                         }
                     }
                 }
 
-                *std::min_element(max_potential_marginals_.begin(), max_potential_marginals_.end(), [](auto& m1, auto& m2) { return m1[1] + m1[2] < m2[1] + m2[2]; })
+                //TODO: I think we dont need this now:
+                // *std::min_element(max_potential_marginals_.begin(), max_potential_marginals_.end(), [](auto& m1, auto& m2) { return m1[1] + m1[2] < m2[1] + m2[2]; })
                 solutionObjective = bestSolutionCost;
             }
 
-            REAL objective() const
-            {
-                const auto *std::min_element(max_potential_marginals_.begin(), max_potential_marginals_.end(), [](auto& m1, auto& m2) { return m1[1] + m1[2] < m2[1] + m2[2]; })
-
-            }
 
             bool UpdateDistances(INDEX edgeToUpdate, std::vector<std::vector<REAL> >& distanceFromSource, std::vector<INDEX>& predecessors) const
             {
@@ -759,19 +773,11 @@ class ShortestPathTreeInChain {
                 return reachedTerminal;
             }
 
-            std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<MaxPairwisePotential>& pots, bool doReverse = false) const
+            std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<MaxPairwisePotential>& pots) const
             {
                 std::vector<INDEX> idx(pots.size());
                 std::iota(idx.begin(), idx.end(), 0);
-
-                if (!doReverse)
-                    std::sort(idx.begin(), idx.end(),
-                        [&pots](INDEX i1, INDEX i2) {return pots[i1].value < pots[i2].value;});
-                
-                else
-                    std::sort(idx.begin(), idx.end(),
-                        [&pots](INDEX i1, INDEX i2) {return pots[i1].value > pots[i2].value;});
-
+                std::sort(idx.begin(), idx.end(), [&pots](INDEX i1, INDEX i2) {return pots[i1].value < pots[i2].value;});
                 return idx;
             }
 
@@ -819,11 +825,30 @@ class ShortestPathTreeInChain {
             {
                 ShortestPathTreeInChain spTree = FindAndInitializeSPTree();
                 REAL treeMaxPotValue = spTree.GetMaxPotValueInTree().maxPotValue;
-                marginals_.push_back({treeMaxPotValue, spTree.GetDistance(NumNodes, 1)});
-                solutionObjective = fmin(solutionObjective, treeMaxPotValue + spTree.GetDistance(NumNodes, 0));
+                INDEX currentMaxPotIndex = 0;
+                if (!MaxPotMarginalsInitialized)
+                    marginals_.insert(marginals_.begin(), {treeMaxPotValue, spTree.GetDistance(NumNodes, 0), 0});
+                else
+                {
+                    assert(marginals_[currentMaxPotIndex][0] == treeMaxPotValue);
+                    marginals_[currentMaxPotIndex][1] = spTree.GetDistance(NumNodes, 0);
+                }
 
-                std::vector<INDEX> sortingOrder = GetPairwisePotsSortingOrder(MaxPotentials1D, true);
-                for (INDEX i = 0; i < sortingOrder.size(); i++)
+                currentCost = marginals_[currentMaxPotIndex][2] + spTree.GetDistance(NumNodes, 0);
+                if (currentCost < solutionObjective)
+                {
+                    solutionObjective = currentCost; 
+                    INDEX currentLabel = 0; // for terminal node;
+                    for (int currentNodeToBackTrack = NumNodes - 1; currentNodeToBackTrack >= 1; currentNodeToBackTrack--) // Exclude source node.
+                    {
+                        solution_[currentNodeToBackTrack - 1] = spTree.GetParentLabel(currentNodeToBackTrack + 1, currentLabel);
+                        currentLabel = solution_[currentNodeToBackTrack];
+                    }
+                }
+
+                currentMaxPotIndex++;
+
+                for (int i = MaxPotsSortingOrder.size() - 1; i >= 0; i--)
                 {   
                     auto currentMaxPotEdge = MaxPotentials1D[sortingOrder[i]];
                     bool wasTreeEdge = spTree.CheckAndPopMaxPotInTree(
@@ -905,13 +930,10 @@ class ShortestPathTreeInChain {
                                 for (INDEX nextLabel = 0; nextLabel < NumLabels[nextNode - 1]; nextLabel++)
                                 {
                                     REAL linearPotentialValue = 0;
-                                    REAL maxPotentialValue = std::numeric_limits<REAL>::min();
                                     if (currentDesc[0] - 1 < NumNodes - 2)
                                     {
-                                        REAL maxPotentialValue = MaxPairwisePotentials(currentDesc[0] - 1, currentDesc[1], nextLabel);
                                         REAL linearPotentialValue = LinearPairwisePotentials(currentDesc[0] - 1, currentDesc[1], nextLabel);
                                     }
-
                                     
                                     if (spTree.GetStatusOfNode(nextNode, nextLabel) ||
                                     spTree.isEdgeDeleted(currentDesc[0], currentDesc[1], nextLabel))
@@ -928,8 +950,28 @@ class ShortestPathTreeInChain {
                             return;
 
                         REAL treeMaxPotValue = spTree.GetMaxPotValueInTree().maxPotValue;
-                        marginals_.push_back({treeMaxPotValue, spTree.GetDistance(NumNodes, 0)});
-                        solutionObjective = fmin(solutionObjective, treeMaxPotValue + spTree.GetDistance(NumNodes, 0));
+                        
+                        if (!MaxPotMarginalsInitialized)
+                            marginals_.insert(marginals_.begin(), {treeMaxPotValue, spTree.GetDistance(NumNodes, 1, 0)}); // push front to maintain the increasing max pot order.
+                        else
+                        {
+                            assert(marginals_[currentMaxPotIndex][0] == treeMaxPotValue);
+                            marginals_[currentMaxPotIndex][1] = spTree.GetDistance(NumNodes, 1, 0);
+                        }
+
+                        currentCost = marginals_[currentMaxPotIndex][2] + spTree.GetDistance(NumNodes, 0);
+                        if (currentCost < solutionObjective)
+                        {
+                            solutionObjective = currentCost; 
+                            INDEX currentLabel = 0; // for terminal node;
+                            for (int currentNodeToBackTrack = NumNodes - 1; currentNodeToBackTrack >= 1; currentNodeToBackTrack--) // Exclude source node.
+                            {
+                                solution_[currentNodeToBackTrack - 1] = spTree.GetParentLabel(currentNodeToBackTrack + 1, currentLabel); //TODO: Verify this!
+                                currentLabel = solution_[currentNodeToBackTrack];
+                            }
+                        }
+
+                        currentMaxPotIndex++;                        
                     }
                 }
             }
@@ -1086,7 +1128,7 @@ class max_potential_on_tree {
             boundsDirty = true;
         }
 
-        REAL GetMaxPotLowerBound(bool recompute = false)
+        REAL GetMaxPotLowerBound()
         {
             if (boundsDirty)
             {
@@ -1096,7 +1138,7 @@ class max_potential_on_tree {
             return MaxPotentialLowerBound;
         }
 
-        REAL GetMaxPotUpperBound(bool recompute = false)
+        REAL GetMaxPotUpperBound()
         {
             if (boundsDirty)
             {
