@@ -121,12 +121,12 @@ namespace LP_MP {
             mutable bool max_potential_valid = false;
             vector<INDEX> primal; 
 
-            struct max_potential_entry {
+            struct max_potential_index {
                 REAL cost;
                 INDEX variable;
                 INDEX label;
             };
-            vector<max_potential_entry> max_potential_sorted;
+            vector<max_potential_index> max_potential_sorted;
 
     }; */
 
@@ -187,10 +187,14 @@ namespace LP_MP {
                 // compute optimal solution and store it
             }
 
+            INDEX& max_potential_index(const INDEX i) { assert(i<max_potential_index_.size()); return max_potential_index_[i]; }
+            INDEX max_potential_index(const INDEX i) const { assert(i<max_potential_index_.size()); return max_potential_index_[i]; }
+
         private:
+            two_dim_variable_array<std::array<REAL,2>> marginals; // ?
             std::vector<MaxPotentialElement> MaxPotentials;
             two_dim_variable_array<REAL> LinearPotentials;
-            mutable std::vector<INDEX> solution;
+            mutable std::vector<INDEX> max_potential_index_;
             mutable REAL solutionObjective;
 
             void Solve() const
@@ -589,15 +593,19 @@ class ShortestPathTreeInChain {
 
             // setter
             INDEX& solution(const std::size_t i) { assert(i < solution_.size()); return solution_[i]; }
+            std::size_t& max_potential_index() { return max_potential_index_; }
             // getter
             INDEX solution(const std::size_t i) const { assert(i < solution_.size()); return solution_[i]; }
+            std::size_t max_potential_index() const { return max_potential_index_; }
         
             std::array<REAL,3>& max_potential_marginal(const std::size_t i) { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
             std::array<REAL,3> max_potential_marginal(const std::size_t i) const { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
 
         protected:
                 std::vector<INDEX> NumLabels;
+                // primal solution
                 mutable std::vector<INDEX> solution_;
+                std::size_t max_potential_index_; // TODO: put that into tree as well.
 
         private:
             mutable std::vector<MaxPairwisePotential> MaxPotentials1D;
@@ -1446,12 +1454,14 @@ private:
     const std::size_t variable;
 };
 
-// }
 
-
-   class pairwise_max_factor_message {
+   class pairwise_max_factor_tree__message {
    public:
-   pairwise_max_factor_message(const INDEX _entry) : entry(_entry) {}
+   pairwise_max_factor_message(const INDEX _pairwise_entry) 
+       : pairwise_entry(_pairwise_entry),
+       unary_1(_unary_1),
+       unary_2(_unary_2) 
+   {}
 
             template<typename FACTOR, typename MSG>
             void RepamRight(FACTOR& r, const MSG& msgs)
@@ -1492,39 +1502,23 @@ private:
             }
 
             template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
-            bool ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
+            void ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
             {
-                const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
-                if(left_primal < l.size()) {
-                    assert(false);
-                    //const bool changed = (left_primal != r.solution[entry]);
-                    //l.primal()[0] = r.solution[entry] / l.dim1();
-                    //l.primal()[1] = r.solution[entry] % l.dim1();
-                    //return changed;
-                } else {
-                    return false;
-                }
+                l.primal()[0] = r.solution(unary_1);
+                l.primal()[1] = r.solution(unary_2);
             }
 
             template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
-            bool ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
+            void ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
             {
-                const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
-                if(r.solution() < r.NumLabels[entry]) {
-                    assert(false);
-                    //const bool changed = (left_primal != r.solution[entry]);
-                    //r.solution[entry] = left_primal;
-                    //return changed;
-                } else {
-                    return false;
-                }
+                r.solution(unary_1) = l.primal()[0];
+                r.solution(unary_2) = l.primal()[1];
             }
 
             template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
             bool CheckPrimalConsistency(const LEFT_FACTOR& l, const RIGHT_FACTOR& r) const
             {
-                const INDEX left_primal = l.primal()[0]*l.dim1() + l.primal()[1];
-                return left_primal == r.solution[entry];
+                return r.solution(unary_1) == l.primal()[0] && r.solution(unary_2) == l.primal()[1];
             } 
 
             template<typename SOLVER, typename LEFT_FACTOR, typename RIGHT_FACTOR>
@@ -1535,8 +1529,70 @@ private:
             }
 
         private:
-            const INDEX entry;
+            const INDEX pairwise_entry;
+            const INDEX unary_1, unary_2;
     };
+
+   class max_factor_tree_graph_message {
+       public:
+
+            template<typename FACTOR, typename MSG>
+            void RepamRight(FACTOR& r, const MSG& msg)
+            {
+                assert(r.marginals[entry].size() == msg.size());
+                for(std::size_t i=0; i<r.marginals[entry].size(); ++i) {
+                    r.marginals[entry][i][1] += msg[i];
+                }
+            }
+
+            template<typename FACTOR, typename MSG>
+            void RepamLeft(FACTOR& l, const MSG& msg)
+            {
+                assert(msg.size() = l.max_potential_marginals_.size());
+                for(std::size_t i=0; i<l.max_potential_marginals_.size(); ++i) {
+                    l.max_potential_marginals_[i][2] += msg[i]; 
+                }
+            }
+
+            template<typename LEFT_FACTOR, typename MSG>
+            void send_message_to_right(const LEFT_FACTOR& l, MSG& msg, const REAL omega = 1.0)
+            {
+                vector<REAL> m(l.max_potential_marginals_.size());
+                for(std::size_t i=0; i<l.max_potential_marginals_.size(); ++i) {
+                    m[i] = l.max_potential_marginals_[i][1] + l.max_potential_marginals_[i][2];
+                }
+                const auto min = m.min();
+                for(auto& x : m) { x-= min; }
+                msg -= omega*m; 
+            }
+
+            template<typename RIGHT_FACTOR, typename MSG>
+            void send_message_to_left(const RIGHT_FACTOR& r, MSG& msg, const REAL omega = 1.0)
+            {
+                assert(false);
+            }
+
+            template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
+            void ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
+            {
+                l.max_potential_index() = r.max_potential_index(entry);
+            }
+
+            template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
+            void ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
+            {
+                r.max_potential_index(entry) = l.max_potential_index();
+            }
+
+            template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
+            bool CheckPrimalConsistency(const LEFT_FACTOR& l, const RIGHT_FACTOR& r) const
+            {
+                r.max_potential_index(entry) == l.max_potential_index();
+            } 
+
+       private:
+       const std::size_t entry; // TODO: change name?
+   };
     
 }
 
