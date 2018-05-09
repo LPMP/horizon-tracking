@@ -604,7 +604,7 @@ class ShortestPathTreeInChain {
             std::vector<INDEX> MaxPotsSortingOrder;
             tensor3_variable<REAL> MaxPairwisePotentials;
             mutable std::vector<std::array<REAL,3>> max_potential_marginals_; // (i) max potential, (ii) minimum linear potential, (iii) cost of configuration TODO: Sort these 
-            bool MaxPotMarginalsInitialized = false;
+            mutable bool MaxPotMarginalsInitialized = false;
 
             // cost = max_potential_marginals_[1] + max_potential_marginals_[2] TODO: remove max potential value from objective calculation
             bool UseEdgeDeletion;
@@ -827,14 +827,14 @@ class ShortestPathTreeInChain {
                 REAL treeMaxPotValue = spTree.GetMaxPotValueInTree().maxPotValue;
                 INDEX currentMaxPotIndex = 0;
                 if (!MaxPotMarginalsInitialized)
-                    marginals_.insert(marginals_.begin(), {treeMaxPotValue, spTree.GetDistance(NumNodes, 0), 0});
+                    max_potential_marginals_.insert(max_potential_marginals_.begin(), {treeMaxPotValue, spTree.GetDistance(NumNodes, 0), 0});
                 else
                 {
-                    assert(marginals_[currentMaxPotIndex][0] == treeMaxPotValue);
-                    marginals_[currentMaxPotIndex][1] = spTree.GetDistance(NumNodes, 0);
+                    assert(max_potential_marginals_[currentMaxPotIndex][0] == treeMaxPotValue);
+                    max_potential_marginals_[currentMaxPotIndex][1] = spTree.GetDistance(NumNodes, 0);
                 }
 
-                currentCost = marginals_[currentMaxPotIndex][2] + spTree.GetDistance(NumNodes, 0);
+                REAL currentCost = max_potential_marginals_[currentMaxPotIndex][2] + spTree.GetDistance(NumNodes, 0);
                 if (currentCost < solutionObjective)
                 {
                     solutionObjective = currentCost; 
@@ -850,7 +850,7 @@ class ShortestPathTreeInChain {
 
                 for (int i = MaxPotsSortingOrder.size() - 1; i >= 0; i--)
                 {   
-                    auto currentMaxPotEdge = MaxPotentials1D[sortingOrder[i]];
+                    auto currentMaxPotEdge = MaxPotentials1D[MaxPotsSortingOrder[i]];
                     bool wasTreeEdge = spTree.CheckAndPopMaxPotInTree(
                         currentMaxPotEdge.n1 + 1, currentMaxPotEdge.l1, currentMaxPotEdge.n2 + 1, currentMaxPotEdge.l2, currentMaxPotEdge.value); // +1 due to source node.
                     spTree.RemovePossibleEdge(currentMaxPotEdge.n1 + 1, currentMaxPotEdge.l1, currentMaxPotEdge.l2);
@@ -952,14 +952,14 @@ class ShortestPathTreeInChain {
                         REAL treeMaxPotValue = spTree.GetMaxPotValueInTree().maxPotValue;
                         
                         if (!MaxPotMarginalsInitialized)
-                            marginals_.insert(marginals_.begin(), {treeMaxPotValue, spTree.GetDistance(NumNodes, 1, 0)}); // push front to maintain the increasing max pot order.
+                            max_potential_marginals_.insert(max_potential_marginals_.begin(), {treeMaxPotValue, spTree.GetDistance(NumNodes, 0), 0}); // push front to maintain the increasing max pot order.
                         else
                         {
-                            assert(marginals_[currentMaxPotIndex][0] == treeMaxPotValue);
-                            marginals_[currentMaxPotIndex][1] = spTree.GetDistance(NumNodes, 1, 0);
+                            assert(max_potential_marginals_[currentMaxPotIndex][0] == treeMaxPotValue);
+                            max_potential_marginals_[currentMaxPotIndex][1] = spTree.GetDistance(NumNodes, 0);
                         }
 
-                        currentCost = marginals_[currentMaxPotIndex][2] + spTree.GetDistance(NumNodes, 0);
+                        currentCost = max_potential_marginals_[currentMaxPotIndex][2] + spTree.GetDistance(NumNodes, 0);
                         if (currentCost < solutionObjective)
                         {
                             solutionObjective = currentCost; 
