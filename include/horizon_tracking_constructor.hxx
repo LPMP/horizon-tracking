@@ -6,7 +6,7 @@
 #include "pegtl/parse.hh"
 #include "tree_decomposition.hxx"
 #include "arboricity.h"
-// #include "mrf_problem_construction.hxx"
+#include "mrf_problem_construction.hxx"
 #include <string>
 
 namespace LP_MP {
@@ -216,7 +216,6 @@ namespace UAIMaxPotInput {
 
    bool ParseProblem(const std::string& filename)
    {
-      // LP_MP::UaiMrfInput::ParseProblem(filename, solver?);
       std::cout << "parsing " << filename << "\n";
       pegtl::file_parser problem(filename);
       std::vector<MaxPotInput> input;
@@ -229,7 +228,6 @@ namespace UAIMaxPotInput {
    {
        auto& chain_constructor = s.template GetProblemConstructor<0>();
 
-      // LP_MP::UaiMrfInput::ParseProblem(filename, solver?);
         std::cout << "parsing " << filename << "\n";
         pegtl::file_parser problem(filename);
         std::vector<MaxPotInput> input;

@@ -877,16 +877,16 @@ class LabelStateSpace {
             if (maxPot > MaxPotentialUpperBound)
                 return; // This edge has value greater than ub, and we hope to find something <= ub, thus discarding this.
 
-            else if (maxPot < MaxPotentialLowerBound)
+            else if (maxPot < MaxPotentialLowerBoundForAllTrees)
             {
                 if (!lowerBoundAdded)
                 {
-                    potentials.insert(std::pair<REAL, REAL>(MaxPotentialLowerBound, linearPot));
+                    potentials.insert(std::pair<REAL, REAL>(MaxPotentialLowerBoundForAllTrees, linearPot));
                     lowerBoundAdded = true;
                 }
                 else
                 {
-                    auto itr = potentials.find(MaxPotentialLowerBound);
+                    auto itr = potentials.find(MaxPotentialLowerBoundForAllTrees);
                     assert(itr != potentials.end());
                     itr->second = fmin(linearPot, itr->second);
                 }
@@ -910,14 +910,14 @@ class LabelStateSpace {
                     }
                 }
                 potentials.insert(lbKey, std::pair<REAL, REAL>(maxPot, linearPot)); // Insert with hint 
-                if (maxPot == MaxPotentialLowerBound)
+                if (maxPot == MaxPotentialLowerBoundForAllTrees)
                     lowerBoundAdded = true;
             }
         }
 
         REAL GetMaxPotLowerBound() const
         {
-            return MaxPotentialLowerBound;
+            return MaxPotentialLowerBoundForAllTrees;
         }
 
         REAL GetMaxPotUpperBound() const
@@ -976,6 +976,8 @@ class LabelStateSpace {
 
 };
 
+REAL max_potential_on_tree::MaxPotentialLowerBoundForAllTrees = std::numeric_limits<REAL>::min();
+
 class max_potential_on_tree {
     public:       
         max_potential_on_tree(const tensor3_variable<REAL>& maxPairwisePotentials, const tensor3_variable<REAL>& linearPairwisePotentials,
@@ -1002,12 +1004,7 @@ class max_potential_on_tree {
 
         REAL GetMaxPotLowerBound()
         {
-            return MaxPotentialLowerBound;
-        }
-
-        void SetMaxPotLowerBound(REAL value)
-        {
-            MaxPotentialLowerBound = value;
+            return MaxPotentialLowerBoundForAllTrees;
         }
 
         REAL GetMaxPotUpperBound()
@@ -1018,11 +1015,6 @@ class max_potential_on_tree {
                 boundsDirty = false;
             }
             return MaxPotentialUpperBound;
-        }
-        
-        void SetMaxPotUpperBound(REAL value)
-        {
-            MaxPotentialUpperBound = value;
         }
 
         REAL LowerBound() const
@@ -1075,7 +1067,7 @@ class max_potential_on_tree {
         std::vector<INDEX> NumEdgesForNode;
         
         std::vector<std::array<INDEX, 2>> MessagePassingSchedule;
-        mutable REAL MaxPotentialLowerBound;    // Computed by max potential message passing.
+        static REAL MaxPotentialLowerBoundForAllTrees;    // Computed by max potential message passing.
         mutable REAL MaxPotentialUpperBound;
         mutable REAL LinearPotentialLowerBound; // Computed by conventional message passing.
         // mutable REAL LinearPotentialUpperBound; // TODO: Can be computed from max potential message passing and by used to prune paths longer than this bound.
@@ -1089,7 +1081,7 @@ class max_potential_on_tree {
         void ComputeMaxPotLowerBound() const
         {
             std::array<REAL, 2> bounds = MessagePassingForOnePotential(MaxPairwisePotentials, LinearPairwisePotentials, false);
-            MaxPotentialLowerBound = bounds[0];
+            MaxPotentialLowerBoundForAllTrees = fmax(bounds[0], MaxPotentialLowerBoundForAllTrees); // To take max over all trees.
             // LinearPotentialUpperBound = bounds[1]; //TODO: If this is not useful remove it and compute max potential lb only once and store it, as it will not change.
             // Seems like LinearPotentialUpperBound wont help in anything, so we dont need to call this function again and again after updated linear pots.
         }
@@ -1109,7 +1101,7 @@ class max_potential_on_tree {
             {
                 messages[i].resize(NumLabels[i]);
                 for (INDEX l = 0; l < NumLabels[i]; l++) 
-                    messages[i][l] = LabelStateSpace(MaxPotentialLowerBound, MaxPotentialUpperBound);
+                    messages[i][l] = LabelStateSpace(MaxPotentialLowerBoundForAllTrees, MaxPotentialUpperBound);
             }
 
             std::vector<INDEX> totalSentAndReceivedMessages(NumNodes, 0);
@@ -1178,7 +1170,7 @@ class max_potential_on_tree {
 
         LabelStateSpace GetHeadLabelStateSpaceFromCurrentTail(const std::vector<LabelStateSpace>& tailMessages, INDEX edgeIndex, INDEX lh, bool isReverse, bool isTailLeaf = false) const 
         {
-            LabelStateSpace lhStateSpace(MaxPotentialLowerBound, MaxPotentialUpperBound);
+            LabelStateSpace lhStateSpace(MaxPotentialLowerBoundForAllTrees, MaxPotentialUpperBound);
             for (INDEX lt = 0; lt < tailMessages.size(); lt++)
             {
                 REAL edgeMaxPot = !isReverse ? MaxPairwisePotentials(edgeIndex, lt, lh) : MaxPairwisePotentials(edgeIndex, lh, lt);
