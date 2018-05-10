@@ -23,7 +23,7 @@ struct FMC_HORIZON_TRACKING {
 
    using UnaryPairwiseMessageLeftContainer = MessageContainer<UnaryPairwiseMessage<Chirality::left,false>, 0, 1, message_passing_schedule::left, variableMessageNumber, 1, FMC_HORIZON_TRACKING, 0 >;
    using UnaryPairwiseMessageRightContainer = MessageContainer<UnaryPairwiseMessage<Chirality::right,false>, 0, 1, message_passing_schedule::left, variableMessageNumber, 1, FMC_HORIZON_TRACKING, 1 >;
-   using pairwise_max_message_container = MessageContainer<pairwise_max_factor_message, 1, 2, message_passing_schedule::left, 1, variableMessageNumber, FMC_HORIZON_TRACKING, 2>;
+   using pairwise_max_message_container = MessageContainer<pairwise_max_factor_tree_message, 1, 2, message_passing_schedule::left, 1, variableMessageNumber, FMC_HORIZON_TRACKING, 2>;
 
    using FactorList = meta::list< UnaryFactor, PairwiseFactor, max_chain_container >;
    using MessageList = meta::list< UnaryPairwiseMessageLeftContainer, UnaryPairwiseMessageRightContainer, pairwise_max_message_container >;

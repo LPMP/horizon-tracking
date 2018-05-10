@@ -9,126 +9,6 @@
 #include <cmath>
 
 namespace LP_MP {
-    /*
-    class max_factor {
-        public:
-            template<typename ITERATOR>
-            max_factor(ITERATOR size_begin, ITERATOR size_end)
-            :
-                max_potential(size_begin, size_end),
-                linear_potential(size_begin, size_end),
-                primal(std::distance(size_begin, size_end)),
-                max_potential_sorted(max_potential.total_size())
-            {}
-
-            template<typename MATRIX>
-            void assign_max_potential_matrix(const INDEX entry, const MATRIX& costs)
-            {
-                INDEX c = 0;
-            for(INDEX i=0; i<costs.dim1(); ++i) {
-                    for(INDEX j=0; j<costs.dim2(); ++j) {
-                        max_potential[entry][c++] = costs(i,j);
-                    }
-                }
-            }
-
-            REAL EvaluatePrimal() const
-            {
-                REAL linear_cost = 0.0;
-                REAL max_cost = -std::numeric_limits<REAL>::infinity();
-                for(INDEX i=0; i<max_potential.size(); ++i) {
-                    linear_cost += linear_potential[i][ primal[i] ];
-                    max_cost = std::max(max_potential[i][ primal[i] ], max_cost);
-                }
-                return linear_cost + max_cost;
-            }
-
-            INDEX no_variables() const { return max_potential.size(); }
-            INDEX no_labels(const INDEX i) const { return max_potential[i].size(); }
-
-            template<typename LAMBDA>
-            REAL combinatorial_search(LAMBDA f) const
-            {
-                std::vector<bool> variable_covered(max_potential.size(), false);
-                INDEX no_variables_covered = 0; 
-                std::vector<REAL> linear_cost(no_variables(), 0.0);
-
-                REAL lb = std::numeric_limits<REAL>::infinity();
-                REAL total_linear_cost = 0.0;
-
-                for(const auto& e : max_potential_sorted) {
-                    const REAL cost = e.cost;
-                    const REAL var = e.var;
-                    const REAL label = e.label;
-                    if(linear_potential[var][label] < linear_cost[var]) {
-                        linear_cost[var] = linear_potential[var][label];
-                        total_linear_cost += -linear_cost[var] + linear_potential[var][label]; 
-                    }
-                    if(variable_covered[var] == false) {
-                        variable_covered[var] = true;
-                        f(lb, var, label);
-                        no_variables_covered++;
-                    }
-                    if(cost + total_linear_cost < lb) {
-                        if(no_variables_covered == no_variables()) {
-                            lb = cost + total_linear_cost;
-                        }
-                        f(lb, var, label);
-                    }
-                }
-
-                return lb; 
-            }
-
-            void MaximizePotentialAndComputePrimal()
-            {
-                auto record_primal = [&primal](const REAL lb, const INDEX var, const INDEX label) {
-                    primal[var] = label;
-                };
-
-                combinatorial_search(record_primal);
-            }
-
-            REAL LowerBound() const
-            {
-                auto no_op = [](auto, auto, auto) {};
-                return combinatorial_search(no_op);
-            }
-
-            void sort_max_potentials()
-            {
-                INDEX c=0;
-                for(INDEX var=0; var<max_potential.size(); ++var) {
-                    for(INDEX label=0; label<max_potential[var].size(); ++label) {
-                        max_potential_sorted[c++] = {max_potential[var][label], var, label};
-                    }
-                }
-                std::sort(max_potential_sorted.begin(), max_potential_sorted.end(), [](auto& a, auto& b) { return a.cost < b.cost; });
-            }
-
-            void init_primal()
-            {
-                std::fill(primal.begin(), primal.end(), std::numeric_limits<INDEX>::max());
-            }
-
-            auto export_variables() { std::tie(max_potential, linear_potential); }
-
-            two_dim_variable_array<REAL> max_potential;
-            two_dim_variable_array<REAL> linear_potential;
-
-        private:
-            mutable REAL max_potential;
-            mutable bool max_potential_valid = false;
-            vector<INDEX> primal; 
-
-            struct max_potential_index {
-                REAL cost;
-                INDEX variable;
-                INDEX label;
-            };
-            vector<max_potential_index> max_potential_sorted;
-
-    }; */
 
     class max_potential_on_graph {
 
@@ -464,8 +344,6 @@ class ShortestPathTreeInChain {
         }
     };
 
-
-
     class max_potential_on_chain {
         struct MaxPairwisePotential {
             REAL value;
@@ -720,7 +598,7 @@ class ShortestPathTreeInChain {
             bool UpdateDistances(INDEX edgeToUpdate, std::vector<std::vector<REAL> >& distanceFromSource, std::vector<INDEX>& predecessors) const
             {
                 bool reachedTerminal = false;
-                std::queue<EdgePriority, EdgePriorityComparison> pQueue;  //TODO: Priority queue probably does not offer any benefit for topological sort shortest path.
+                std::queue<EdgePriority> queue;  //TODO: Priority queue probably does not offer any benefit for topological sort shortest path.
                 auto currentMaxPot = MaxPotentials1D[edgeToUpdate];
                 
                 INDEX n1 = currentMaxPot.n1;
@@ -733,12 +611,12 @@ class ShortestPathTreeInChain {
                 
                 REAL offeredDistanceTon2l2 = distanceFromSource[n1][l1] + currentLinearPot;
 
-                pQueue.push(EdgePriority{offeredDistanceTon2l2, edgeToUpdate});
+                queue.push(EdgePriority{offeredDistanceTon2l2, edgeToUpdate});
 
-                while(!pQueue.empty())
+                while(!queue.empty())
                 {
-                    EdgePriority currentEdgeStruct = pQueue.front();
-                    pQueue.pop();
+                    EdgePriority currentEdgeStruct = queue.front();
+                    queue.pop();
                     INDEX currentEdge = currentEdgeStruct.index;
                     REAL offeredDistanceTon2l2 = currentEdgeStruct.value;
                     auto currentMaxPot = MaxPotentials1D[currentEdge];
@@ -780,7 +658,7 @@ class ShortestPathTreeInChain {
                         
                         REAL offeredDistanceTon3l3 = offeredDistanceTon2l2 + currentLinearPot;
 
-                        pQueue.push(EdgePriority{offeredDistanceTon3l3, currentEdgeToConsider});
+                        queue.push(EdgePriority{offeredDistanceTon3l3, currentEdgeToConsider});
                     }
                 }
                 return reachedTerminal;
@@ -1117,7 +995,7 @@ class max_potential_on_tree {
         }
 
         // Call this function whenever linear/max potentials get changed so the bounds need to be recomputed.
-        void PotsChanged()
+        void LinearPotsChanged()
         {
             boundsDirty = true;
         }
@@ -1125,6 +1003,11 @@ class max_potential_on_tree {
         REAL GetMaxPotLowerBound()
         {
             return MaxPotentialLowerBound;
+        }
+
+        void SetMaxPotLowerBound(REAL value)
+        {
+            MaxPotentialLowerBound = value;
         }
 
         REAL GetMaxPotUpperBound()
@@ -1137,6 +1020,11 @@ class max_potential_on_tree {
             return MaxPotentialUpperBound;
         }
         
+        void SetMaxPotUpperBound(REAL value)
+        {
+            MaxPotentialUpperBound = value;
+        }
+
         REAL LowerBound() const
         {
             ComputeSolution();
@@ -1582,9 +1470,9 @@ class unary_max_potential_on_chain_message {
         const std::size_t variable;
 };
 
-class pairwise_max_factor_tree__message {
+class pairwise_max_factor_tree_message {
     public:
-        pairwise_max_factor_tree__message(const INDEX _pairwise_entry, INDEX _unary_1, INDEX _unary_2) :
+        pairwise_max_factor_tree_message(const INDEX _pairwise_entry, INDEX _unary_1, INDEX _unary_2) :
             pairwise_entry(_pairwise_entry), 
             unary_1(_unary_1),
             unary_2(_unary_2)
@@ -1593,8 +1481,8 @@ class pairwise_max_factor_tree__message {
         template<typename FACTOR, typename MSG>
         void RepamRight(FACTOR& r, const MSG& msgs)
         {
-            for(INDEX i=0; i<r.LinearPairwisePotentials[entry].size(); ++i) {
-                r.LinearPairwisePotentials[entry][i] += msgs[i];
+            for(INDEX i=0; i<r.LinearPairwisePotentials[pairwise_entry].size(); ++i) {
+                r.LinearPairwisePotentials[pairwise_entry][i] += msgs[i];
             }
         }
 

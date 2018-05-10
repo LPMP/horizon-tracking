@@ -4,10 +4,10 @@ namespace LP_MP
 {
     int main()
     {
-        std::string path = "Chain-Small-5x1.uai";
-        //bool success = LP_MP::UAIMaxPotInput::ParseProblem(path);
+        std::string path = "Grid-Small-5x5.uai";
         using solver_type = Solver<FMC_HORIZON_TRACKING, LP, StandardVisitor>;
         solver_type solver;
         const bool success = UAIMaxPotInput::ParseProblemGridAndDecomposeToChains(solver, path);
+        solver.Solve();
     }
 }
