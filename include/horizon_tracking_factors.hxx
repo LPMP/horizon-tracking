@@ -1477,9 +1477,13 @@ class pairwise_max_factor_tree_message {
         template<typename FACTOR, typename MSG>
         void RepamRight(FACTOR& r, const MSG& msgs)
         {
-            for(INDEX i=0; i<r.LinearPairwisePotentials[pairwise_entry].size(); ++i) {
-                r.LinearPairwisePotentials[pairwise_entry][i] += msgs[i];
+            INDEX i = 0;
+            for(INDEX l1=0; i<r.LinearPairwisePotentials.dim2(pairwise_entry); ++l1) {
+                for(INDEX l2=0; i<r.LinearPairwisePotentials.dim3(pairwise_entry); ++l2, ++i) {
+                    r.LinearPairwisePotentials(pairwise_entry, l1, l2) += msgs[i];
+                }
             }
+            
         }
 
         template<typename FACTOR, typename MSG>
@@ -1551,8 +1555,8 @@ class max_factor_tree_graph_message {
         void RepamRight(FACTOR& r, const MSG& msg)
         {
             assert(r.marginals[entry].size() == msg.size());
-            for(std::size_t i=0; i<r.marginals[entry].size(); ++i) {
-                r.marginals[entry][i][1] += msg[i];
+            for(std::size_t i=0; i<r.marginals()[entry].size(); ++i) {
+                r.marginals()[entry][i][1] += msg[i];
             }
         }
 
