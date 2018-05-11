@@ -56,6 +56,9 @@ namespace LP_MP {
             INDEX& max_potential_index(const INDEX i) { assert(i<max_potential_index_.size()); return max_potential_index_[i]; }
             INDEX max_potential_index(const INDEX i) const { assert(i<max_potential_index_.size()); return max_potential_index_[i]; }
 
+            two_dim_variable_array<std::array<REAL,2>>& marginals() { return marginals_; }
+            two_dim_variable_array<std::array<REAL,2>> marginals() const { return marginals_; }
+
         private:
             two_dim_variable_array<std::array<REAL,2>> marginals_; // ?
             std::vector<MaxPotentialElement> MaxPotentials;
@@ -79,6 +82,7 @@ namespace LP_MP {
                     INDEX currentLabelIndex = MaxPotentials[currentElementToInsert].labelIndex;
                     REAL currentLinearCost = marginals_[currentTableIndex][currentLabelIndex][1];
                     REAL currentMaxCost =  MaxPotentials[currentElementToInsert].value;
+                    assert(currentMaxCost == marginals_[currentTableIndex][currentLabelIndex][0]);
 
                     // If the edge is not yet covered:
                     if (coveredTables.count(currentTableIndex) == 0)  
@@ -877,16 +881,16 @@ class LabelStateSpace {
             if (maxPot > MaxPotentialUpperBound)
                 return; // This edge has value greater than ub, and we hope to find something <= ub, thus discarding this.
 
-            else if (maxPot < MaxPotentialLowerBoundForAllTrees)
+            else if (maxPot < MaxPotentialLowerBound)
             {
                 if (!lowerBoundAdded)
                 {
-                    potentials.insert(std::pair<REAL, REAL>(MaxPotentialLowerBoundForAllTrees, linearPot));
+                    potentials.insert(std::pair<REAL, REAL>(MaxPotentialLowerBound, linearPot));
                     lowerBoundAdded = true;
                 }
                 else
                 {
-                    auto itr = potentials.find(MaxPotentialLowerBoundForAllTrees);
+                    auto itr = potentials.find(MaxPotentialLowerBound);
                     assert(itr != potentials.end());
                     itr->second = fmin(linearPot, itr->second);
                 }
@@ -910,14 +914,14 @@ class LabelStateSpace {
                     }
                 }
                 potentials.insert(lbKey, std::pair<REAL, REAL>(maxPot, linearPot)); // Insert with hint 
-                if (maxPot == MaxPotentialLowerBoundForAllTrees)
+                if (maxPot == MaxPotentialLowerBound)
                     lowerBoundAdded = true;
             }
         }
 
         REAL GetMaxPotLowerBound() const
         {
-            return MaxPotentialLowerBoundForAllTrees;
+            return MaxPotentialLowerBound;
         }
 
         REAL GetMaxPotUpperBound() const
@@ -975,8 +979,6 @@ class LabelStateSpace {
         }
 
 };
-
-REAL max_potential_on_tree::MaxPotentialLowerBoundForAllTrees = std::numeric_limits<REAL>::min();
 
 class max_potential_on_tree {
     public:       
@@ -1387,6 +1389,8 @@ class max_potential_on_tree {
         }
 
 };
+REAL max_potential_on_tree::MaxPotentialLowerBoundForAllTrees = std::numeric_limits<REAL>::min();
+
 
 class unary_max_potential_on_chain_message {
     public:
