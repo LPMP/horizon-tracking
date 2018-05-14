@@ -11,17 +11,18 @@
 
 namespace LP_MP {
 
-template<typename MRF_CONSTRUCTOR, typename MAX_FACTOR, typename PAIRWISE_MAX_FACTOR_MESSAGE>
+template<typename MRF_CONSTRUCTOR, typename MAX_CHAIN_FACTOR, typename MAX_POTENTIAL_FACTOR, typename PAIRWISE_MAX_CHAIN_MESSAGE, typename MAX_CHAIN_MAX_POTENTIAL_MESSAGE>
 class max_chain_constructor : public MRF_CONSTRUCTOR {
 public:
 using mrf_constructor = MRF_CONSTRUCTOR;
-using max_factor_container = MAX_FACTOR;
-using pairwise_max_factor_message_container = PAIRWISE_MAX_FACTOR_MESSAGE;
-
+using max_chain_factor_container = MAX_CHAIN_FACTOR;
+using max_potential_factor_container = MAX_POTENTIAL_FACTOR;
+using pairwise_max_factor_message_container = PAIRWISE_MAX_CHAIN_MESSAGE;
+using max_chain_max_potential_message_container = MAX_CHAIN_MAX_POTENTIAL_MESSAGE;
 using mrf_constructor::mrf_constructor;
 
 template<typename ITERATOR>
-max_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end, 
+max_chain_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end, 
                                     const tensor3_variable<REAL>& maxPairwisePotentials, 
                                     const tensor3_variable<REAL>& linearPairwisePotentials)
 {
@@ -31,7 +32,7 @@ max_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end,
         const INDEX i = (*it);
         no_labels.push_back( this->GetNumberOfLabels(i) );
     }
-    auto* f = this->lp_->template add_factor<max_factor_container>(maxPairwisePotentials, linearPairwisePotentials, no_labels);
+    auto* f = this->lp_->template add_factor<max_chain_factor_container>(maxPairwisePotentials, linearPairwisePotentials, no_labels);
    
     INDEX c=0;
     for(auto it = var_begin; std::next(it, 1)!=var_end; ++it, ++c) {
@@ -42,6 +43,34 @@ max_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end,
     }
 
     return f;
+}
+
+template<typename ITERATOR>
+max_potential_factor_container* add_max_potential(ITERATOR max_chain_begin, ITERATOR max_chain_end)
+{
+    std::vector<std::vector<std::array<REAL,2>>> all_marginals;
+    for(auto max_chain_it = max_chain_begin; max_chain_it!=max_chain_end; ++max_chain_it) {
+        auto* f = (*max_chain_it)->GetFactor();
+        f->MaximizePotentialAndComputePrimal();
+        std::vector<std::array<REAL,3>> current_chain_marginals = f->max_potential_marginals();
+        std::vector<std::array<REAL,2>> current_chain_marginals_max;
+        for (auto current_marginal_item : current_chain_marginals)
+        {
+            current_chain_marginals_max.push_back({current_marginal_item[0], current_marginal_item[1]});   // Ignoring the third column in the first iteration. 
+        }
+        all_marginals.push_back(current_chain_marginals_max);
+    }
+
+    auto* m = this->lp_->template add_factor<max_potential_factor_container>(all_marginals);
+
+    for(auto max_chain_it = max_chain_begin; max_chain_it!=max_chain_end; ++max_chain_it) {
+        const auto i = std::distance(max_chain_it, max_chain_begin);
+        auto* c = &**max_chain_it;
+
+        this->lp_->template add_message<max_chain_max_potential_message_container>(c, m, i);
+
+    }
+    return m;
 }
 };
 
@@ -223,93 +252,92 @@ namespace UAIMaxPotInput {
       return read_suc;
    }
 
-      template<typename MRF_CONSTRUCTOR>
-      void build_mrf(MRF_CONSTRUCTOR& mrf, const MaxPotInput& input)
-      {
-         assert(input.number_of_cliques_ == input.clique_scopes_.size());
-         assert(input.number_of_cliques_ == input.function_tables_.size());
+    template<typename MRF_CONSTRUCTOR>
+    void build_mrf(MRF_CONSTRUCTOR& mrf, const MaxPotInput& input)
+    {
+        assert(input.number_of_cliques_ == input.clique_scopes_.size());
+        assert(input.number_of_cliques_ == input.function_tables_.size());
 
-         // only unary and pairwise potentials supported right now
-         for(INDEX i=0; i<input.number_of_cliques_; ++i) {
-            assert(input.clique_scopes_[i].size() < 3);
-         }
+        // only unary and pairwise potentials supported right now
+        for(INDEX i=0; i<input.number_of_cliques_; ++i) {
+        assert(input.clique_scopes_[i].size() < 3);
+        }
 
-         // first input the unaries, as pairwise potentials need them to be able to link to them
-         // add unary factors with cost zero for each variables. There are models where unaries are not explicitly added.
-         for(INDEX i=0; i<input.number_of_variables_; ++i) {
-            const INDEX noLabels = input.cardinality_[i];
-            mrf.AddUnaryFactor(i,std::vector<REAL>(noLabels,0.0));
-         }
+        // first input the unaries, as pairwise potentials need them to be able to link to them
+        // add unary factors with cost zero for each variables. There are models where unaries are not explicitly added.
+        for(INDEX i=0; i<input.number_of_variables_; ++i) {
+        const INDEX noLabels = input.cardinality_[i];
+        mrf.AddUnaryFactor(i,std::vector<REAL>(noLabels,0.0));
+        }
 
-         REAL initial_lb = 0.0;
-         for(INDEX i=0; i<input.number_of_cliques_; ++i) {
-            if(input.clique_scopes_[i].size() == 1) {
-               const INDEX var = input.clique_scopes_[i][0];
-               //std::cout << "unary potential for variable " << var << ":\n";
-               auto* f = mrf.GetUnaryFactor(var);
-               assert(input.function_tables_[i].size() == input.cardinality_[var]);
-               initial_lb += *std::min_element(input.function_tables_[i].begin(), input.function_tables_[i].end());
-               for(INDEX x=0; x<input.function_tables_[i].size(); ++x) {
-                  //std::cout << input.function_tables_[i][x] << " ";
-                  assert( (*f->GetFactor())[x] == 0.0);
-                  (*f->GetFactor())[x] = input.function_tables_[i][x];
-               }
-               //std::cout << "\n";
+        REAL initial_lb = 0.0;
+        for(INDEX i=0; i<input.number_of_cliques_; ++i) {
+        if(input.clique_scopes_[i].size() == 1) {
+            const INDEX var = input.clique_scopes_[i][0];
+            //std::cout << "unary potential for variable " << var << ":\n";
+            auto* f = mrf.GetUnaryFactor(var);
+            assert(input.function_tables_[i].size() == input.cardinality_[var]);
+            initial_lb += *std::min_element(input.function_tables_[i].begin(), input.function_tables_[i].end());
+            for(INDEX x=0; x<input.function_tables_[i].size(); ++x) {
+                //std::cout << input.function_tables_[i][x] << " ";
+                assert( (*f->GetFactor())[x] == 0.0);
+                (*f->GetFactor())[x] = input.function_tables_[i][x];
             }
-         }
+            //std::cout << "\n";
+        }
+        }
 
-         //std::cout << "initial lower bound unaries = " << initial_lb << "\n"; 
+        //std::cout << "initial lower bound unaries = " << initial_lb << "\n"; 
 
-         // now the pairwise potentials. 
-         for(INDEX i=0; i<input.number_of_cliques_; ++i) {
-            if(input.clique_scopes_[i].size() == 2) {
-               const INDEX var1 = input.clique_scopes_[i][0];
-               const INDEX var2 = input.clique_scopes_[i][1];
-               const INDEX dim1 = mrf.GetNumberOfLabels(var1);
-               const INDEX dim2 = mrf.GetNumberOfLabels(var2);
-               assert(var1<var2 && var2 < input.number_of_variables_);
-               assert(input.function_tables_[i].size() == input.cardinality_[var1]*input.cardinality_[var2]);
-               assert(input.function_tables_[i].size() == dim1*dim2);
-               matrix<REAL> pairwise_cost(dim1,dim2);
-               initial_lb += *std::min_element(input.function_tables_[i].begin(), input.function_tables_[i].end());
-               //std::cout << "pairwise potential on (" << var1 << "," << var2 << "):\n";
-               for(INDEX l1=0; l1<dim1; ++l1) {
-                  for(INDEX l2=0; l2<dim2; ++l2) {
-                     pairwise_cost(l1,l2) = input.function_tables_[i][l2*dim1 + l1];
-               //      std::cout << input.function_tables_[i][l2*dim1 + l1] << " ";
-                  }
-               //   std::cout << "\n";
-               }
-               //std::cout << pairwise_cost;
-               mrf.AddPairwiseFactor(var1,var2,pairwise_cost); // or do we have to transpose the values?
+        // now the pairwise potentials. 
+        for(INDEX i=0; i<input.number_of_cliques_; ++i) {
+        if(input.clique_scopes_[i].size() == 2) {
+            const INDEX var1 = input.clique_scopes_[i][0];
+            const INDEX var2 = input.clique_scopes_[i][1];
+            const INDEX dim1 = mrf.GetNumberOfLabels(var1);
+            const INDEX dim2 = mrf.GetNumberOfLabels(var2);
+            assert(var1<var2 && var2 < input.number_of_variables_);
+            assert(input.function_tables_[i].size() == input.cardinality_[var1]*input.cardinality_[var2]);
+            assert(input.function_tables_[i].size() == dim1*dim2);
+            matrix<REAL> pairwise_cost(dim1,dim2);
+            initial_lb += *std::min_element(input.function_tables_[i].begin(), input.function_tables_[i].end());
+            //std::cout << "pairwise potential on (" << var1 << "," << var2 << "):\n";
+            for(INDEX l1=0; l1<dim1; ++l1) {
+                for(INDEX l2=0; l2<dim2; ++l2) {
+                    pairwise_cost(l1,l2) = input.function_tables_[i][l2*dim1 + l1];
+            //      std::cout << input.function_tables_[i][l2*dim1 + l1] << " ";
+                }
+            //   std::cout << "\n";
             }
-         }
+            //std::cout << pairwise_cost;
+            mrf.AddPairwiseFactor(var1,var2,pairwise_cost); // or do we have to transpose the values?
+        }
+        }
 
-         /*
-         initial_lb = 0.0;
-         for(INDEX i=0; i<input.number_of_cliques_; ++i) {
-            if(input.clique_scopes_[i].size() == 1) {
-               const INDEX var = input.clique_scopes_[i][0];
-               auto* f = mrf.GetUnaryFactor(var);
-               initial_lb += f->LowerBound();
-            }
-         }
-         std::cout << "initial lower bound unaries = " << initial_lb << "\n"; 
+        /*
+        initial_lb = 0.0;
+        for(INDEX i=0; i<input.number_of_cliques_; ++i) {
+        if(input.clique_scopes_[i].size() == 1) {
+            const INDEX var = input.clique_scopes_[i][0];
+            auto* f = mrf.GetUnaryFactor(var);
+            initial_lb += f->LowerBound();
+        }
+        }
+        std::cout << "initial lower bound unaries = " << initial_lb << "\n"; 
 
-         // now the pairwise potentials. 
-         for(INDEX i=0; i<input.number_of_cliques_; ++i) {
-            if(input.clique_scopes_[i].size() == 2) {
-               const INDEX var1 = input.clique_scopes_[i][0];
-               const INDEX var2 = input.clique_scopes_[i][1];
-               auto* f = mrf.GetPairwiseFactor(var1,var2);
-               initial_lb += f->LowerBound();
-            }
-         }
+        // now the pairwise potentials. 
+        for(INDEX i=0; i<input.number_of_cliques_; ++i) {
+        if(input.clique_scopes_[i].size() == 2) {
+            const INDEX var1 = input.clique_scopes_[i][0];
+            const INDEX var2 = input.clique_scopes_[i][1];
+            auto* f = mrf.GetPairwiseFactor(var1,var2);
+            initial_lb += f->LowerBound();
+        }
+        }
 
-         std::cout << "initial lower bound = " << initial_lb << "\n"; 
-         */
-      }
-
+        std::cout << "initial lower bound = " << initial_lb << "\n"; 
+        */
+    }
 
    template<typename SOLVER>
    bool ParseProblemGridAndDecomposeToChains(SOLVER& s, const std::string& filename)
@@ -377,6 +405,12 @@ namespace UAIMaxPotInput {
                     chains[currentChain].insert(i * gridSizeX + currentChain - gridSizeY);
             }
         }
+
+        std::vector<std::vector<INDEX>> sizes;
+        tensor3_variable<REAL> empty_tensor(sizes.begin(), sizes.end());
+
+        using max_chain_factor = decltype(chain_constructor.add_max_chain(chains.begin(), chains.end(), empty_tensor, empty_tensor));
+        std::vector<max_chain_factor> max_chain_potentials;
 
         for (const auto& currentChain : chains)
         {
@@ -470,8 +504,12 @@ namespace UAIMaxPotInput {
                 }
             }
 
-            chain_constructor.add_max_chain(currentChain.begin(), currentChain.end(), maxPairwisePotentials, linearPairwisePotentials);
+            auto* f = chain_constructor.add_max_chain(currentChain.begin(), currentChain.end(), maxPairwisePotentials, linearPairwisePotentials);
+            max_chain_potentials.push_back(f);
+
         }
+
+        auto* f = chain_constructor.add_max_potential(max_chain_potentials.begin(), max_chain_potentials.end());
 
         return read_suc;
    }

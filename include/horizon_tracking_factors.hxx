@@ -19,8 +19,9 @@ namespace LP_MP {
             bool isAdded = false;
         };
 
-        public:       
-            max_potential_on_graph(const two_dim_variable_array<std::array<REAL,2>>& marginals)
+        public:
+            // indices correspond to: chain index, entry in chain, max pot value, linear cost.
+            max_potential_on_graph(const std::vector<std::vector<std::array<REAL,2>>>& marginals)
             : marginals_(marginals)
             {
                 for(std::size_t currentTableIndex = 0; currentTableIndex < marginals_.size(); ++currentTableIndex)
@@ -33,6 +34,7 @@ namespace LP_MP {
                 SortingOrder = GetMaxPotsSortingOrder(MaxPotentials);
             }
 
+            void init_primal() {} //TODO: is it supposed to be empty?
 
             REAL LowerBound() const
             {
@@ -56,11 +58,11 @@ namespace LP_MP {
             INDEX& max_potential_index(const INDEX i) { assert(i<max_potential_index_.size()); return max_potential_index_[i]; }
             INDEX max_potential_index(const INDEX i) const { assert(i<max_potential_index_.size()); return max_potential_index_[i]; }
 
-            two_dim_variable_array<std::array<REAL,2>>& marginals() { return marginals_; }
-            two_dim_variable_array<std::array<REAL,2>> marginals() const { return marginals_; }
+            std::vector<std::vector<std::array<REAL,2>>>& marginals() { return marginals_; }
+            std::vector<std::vector<std::array<REAL,2>>> marginals() const { return marginals_; }
 
         private:
-            two_dim_variable_array<std::array<REAL,2>> marginals_; // ?
+            std::vector<std::vector<std::array<REAL,2>>> marginals_; // ?
             std::vector<MaxPotentialElement> MaxPotentials;
             mutable std::vector<INDEX> max_potential_index_;
             mutable REAL solutionObjective;
@@ -487,6 +489,7 @@ class ShortestPathTreeInChain {
         
             std::array<REAL,3>& max_potential_marginal(const std::size_t i) { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
             std::array<REAL,3> max_potential_marginal(const std::size_t i) const { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
+            std::vector<std::array<REAL,3>> max_potential_marginals() const { return max_potential_marginals_; }
 
         protected:
                 std::vector<INDEX> NumLabels;
@@ -1059,6 +1062,7 @@ class max_potential_on_tree {
                         
         std::array<REAL,3>& max_potential_marginal(const std::size_t i) { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
         std::array<REAL,3> max_potential_marginal(const std::size_t i) const { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
+        std::vector<std::array<REAL,3>> max_potential_marginals() const { return max_potential_marginals_; }
 
     private:
         mutable std::vector<INDEX> solution_;
@@ -1551,10 +1555,12 @@ class pairwise_max_factor_tree_message {
 class max_factor_tree_graph_message {
     public:
 
+        max_factor_tree_graph_message(const std::size_t _entry) : entry(_entry) {}
+
         template<typename FACTOR, typename MSG>
         void RepamRight(FACTOR& r, const MSG& msg)
         {
-            assert(r.marginals[entry].size() == msg.size());
+            assert(r.marginals()[entry].size() == msg.size());
             for(std::size_t i=0; i<r.marginals()[entry].size(); ++i) {
                 r.marginals()[entry][i][1] += msg[i];
             }
@@ -1563,18 +1569,18 @@ class max_factor_tree_graph_message {
         template<typename FACTOR, typename MSG>
         void RepamLeft(FACTOR& l, const MSG& msg)
         {
-            assert(msg.size() = l.max_potential_marginals_.size());
-            for(std::size_t i=0; i<l.max_potential_marginals_.size(); ++i) {
-                l.max_potential_marginals_[i][2] += msg[i]; 
+            assert(msg.size() == l.max_potential_marginals().size());
+            for(std::size_t i=0; i<msg.size(); ++i) {
+                l.max_potential_marginal(i)[2] += msg[i]; 
             }
         }
 
         template<typename LEFT_FACTOR, typename MSG>
         void send_message_to_right(const LEFT_FACTOR& l, MSG& msg, const REAL omega = 1.0)
         {
-            vector<REAL> m(l.max_potential_marginals_.size());
-            for(std::size_t i=0; i<l.max_potential_marginals_.size(); ++i) {
-                m[i] = l.max_potential_marginals_[i][1] + l.max_potential_marginals_[i][2];
+            vector<REAL> m(l.max_potential_marginals().size());
+            for(std::size_t i=0; i<m.size(); ++i) {
+                m[i] = l.max_potential_marginal(i)[1] + l.max_potential_marginal(i)[2];
             }
             const auto min = m.min();
             for(auto& x : m) { x-= min; }
