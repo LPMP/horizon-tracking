@@ -55,6 +55,22 @@ namespace LP_MP {
                 // compute optimal solution and store it
             }
 
+            template<class ARCHIVE> void serialize_primal(ARCHIVE& ar) { ar(); }
+            template<class ARCHIVE> void serialize_dual(ARCHIVE& ar) { ar(); }
+
+            auto export_variables() { return std::tie( ); }
+                        
+            template<typename EXTERNAL_SOLVER>
+            void construct_constraints(EXTERNAL_SOLVER& s) const
+            {
+                assert(false);
+            }
+            template<typename EXTERNAL_SOLVER>
+            void convert_primal(EXTERNAL_SOLVER& s)
+            {
+                assert(false);
+            } 
+
             INDEX& max_potential_index(const INDEX i) { assert(i<max_potential_index_.size()); return max_potential_index_[i]; }
             INDEX max_potential_index(const INDEX i) const { assert(i<max_potential_index_.size()); return max_potential_index_[i]; }
 
@@ -348,7 +364,7 @@ class ShortestPathTreeInChain {
             }
             return 1;
         }
-    };
+};
 
     class max_potential_on_chain {
         struct MaxPairwisePotential {
@@ -1552,6 +1568,8 @@ class pairwise_max_factor_tree_message {
         const INDEX unary_1, unary_2;
 };
 
+// left factor is chain/tree
+// right factor is max_potential_on_graph
 class max_factor_tree_graph_message {
     public:
 
@@ -1611,6 +1629,11 @@ class max_factor_tree_graph_message {
         {
             r.max_potential_index(entry) == l.max_potential_index();
         } 
+
+        template<typename SOLVER, typename LEFT_FACTOR, typename RIGHT_FACTOR>
+        void construct_constraints(SOLVER& s, LEFT_FACTOR& l, RIGHT_FACTOR& r)
+        {
+        }
 
     private:
     const std::size_t entry; // TODO: change name?

@@ -65,7 +65,7 @@ max_potential_factor_container* add_max_potential(ITERATOR max_chain_begin, ITER
 
     for(auto max_chain_it = max_chain_begin; max_chain_it!=max_chain_end; ++max_chain_it) {
         const auto i = std::distance(max_chain_it, max_chain_begin);
-        auto* c = &**max_chain_it;
+        auto* c = *max_chain_it;
 
         this->lp_->template add_message<max_chain_max_potential_message_container>(c, m, i);
 
@@ -409,8 +409,8 @@ namespace UAIMaxPotInput {
         std::vector<std::vector<INDEX>> sizes;
         tensor3_variable<REAL> empty_tensor(sizes.begin(), sizes.end());
 
-        using max_chain_factor = decltype(chain_constructor.add_max_chain(chains.begin(), chains.end(), empty_tensor, empty_tensor));
-        std::vector<max_chain_factor> max_chain_potentials;
+
+        std::vector<typename std::remove_reference_t<decltype(chain_constructor)>::max_chain_factor_container*> max_chain_potentials;
 
         for (const auto& currentChain : chains)
         {
