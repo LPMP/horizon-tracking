@@ -1,12 +1,12 @@
 #include "horizon_tracking.h"
+#include "LP_FWMAP.hxx"
 
 using namespace LP_MP;
 
-int main()
+int main(int argc, char** argv)
 {
-    std::string path = "Grid-Small-5x5.uai";
-    using solver_type = Solver<LP<FMC_HORIZON_TRACKING>, StandardVisitor>;
-    solver_type solver;
-    const bool success = UAIMaxPotInput::ParseProblemGridAndDecomposeToChains(solver, path);
+    using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
+    solver_type solver(argc, argv);
+    solver.ReadProblem(UAIMaxPotInput::ParseProblemGridAndDecomposeToChains<solver_type>);
     solver.Solve();
 }

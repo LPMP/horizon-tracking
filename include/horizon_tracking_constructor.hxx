@@ -7,6 +7,7 @@
 #include "tree_decomposition.hxx"
 #include "arboricity.h"
 #include "mrf_problem_construction.hxx"
+#include "tree_decomposition.hxx"
 #include <string>
 
 namespace LP_MP {
@@ -14,6 +15,7 @@ namespace LP_MP {
 template<typename MRF_CONSTRUCTOR, typename MAX_CHAIN_FACTOR, typename MAX_POTENTIAL_FACTOR, typename PAIRWISE_MAX_CHAIN_MESSAGE, typename MAX_CHAIN_MAX_POTENTIAL_MESSAGE>
 class max_chain_constructor : public MRF_CONSTRUCTOR {
 public:
+using FMC = typename MRF_CONSTRUCTOR::FMC;
 using mrf_constructor = MRF_CONSTRUCTOR;
 using max_chain_factor_container = MAX_CHAIN_FACTOR;
 using max_potential_factor_container = MAX_POTENTIAL_FACTOR;
@@ -24,7 +26,8 @@ using mrf_constructor::mrf_constructor;
 template<typename ITERATOR>
 max_chain_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end, 
                                     const tensor3_variable<REAL>& maxPairwisePotentials, 
-                                    const tensor3_variable<REAL>& linearPairwisePotentials)
+                                    const tensor3_variable<REAL>& linearPairwisePotentials,
+                                    factor_tree<FMC>* t = nullptr)
 {
     const INDEX no_vars = std::distance(var_begin, var_end);
     std::vector<INDEX> no_labels;
@@ -39,14 +42,19 @@ max_chain_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end,
         const INDEX i = (*it);
         const INDEX j = *std::next(it, 1);
         auto* p = this->GetPairwiseFactor(i,j);
-        this->lp_->template add_message<pairwise_max_factor_message_container>(p, f, c, c, c+1);
+        auto* m = this->lp_->template add_message<pairwise_max_factor_message_container>(p, f, c, c, c+1);
+
+        if(t != nullptr) {
+            t->add_message(m, Chirality::right); 
+        }
     }
+
 
     return f;
 }
 
 template<typename ITERATOR>
-max_potential_factor_container* add_max_potential(ITERATOR max_chain_begin, ITERATOR max_chain_end)
+max_potential_factor_container* add_max_potential(ITERATOR max_chain_begin, ITERATOR max_chain_end, factor_tree<FMC>* t = nullptr)
 {
     std::vector<std::vector<std::array<REAL,2>>> all_marginals;
     for(auto max_chain_it = max_chain_begin; max_chain_it!=max_chain_end; ++max_chain_it) {
@@ -67,8 +75,11 @@ max_potential_factor_container* add_max_potential(ITERATOR max_chain_begin, ITER
         const auto i = std::distance(max_chain_it, max_chain_begin);
         auto* c = *max_chain_it;
 
-        this->lp_->template add_message<max_chain_max_potential_message_container>(c, m, i);
+        auto* msg = this->lp_->template add_message<max_chain_max_potential_message_container>(c, m, i);
 
+        if(t != nullptr) {
+            t->add_message(msg, Chirality::right);
+        } 
     }
     return m;
 }
@@ -340,9 +351,10 @@ namespace UAIMaxPotInput {
     }
 
    template<typename SOLVER>
-   bool ParseProblemGridAndDecomposeToChains(SOLVER& s, const std::string& filename)
+   bool ParseProblemGridAndDecomposeToChains(const std::string& filename, SOLVER& s)
    {
-       auto& chain_constructor = s.template GetProblemConstructor<0>();
+        using FMC = typename SOLVER::FMC;
+        auto& chain_constructor = s.template GetProblemConstructor<0>();
 
         std::cout << "parsing " << filename << "\n";
         pegtl::file_parser problem(filename);
@@ -351,6 +363,11 @@ namespace UAIMaxPotInput {
         assert(read_suc);
         assert(input.size() == 2); // One max potential and one linear potential field
         build_mrf(chain_constructor, input[0]);
+
+        auto trees = chain_constructor.compute_forest_cover();
+        for(auto& tree : trees) {
+            s.GetLP().add_tree(tree);
+        }
         
         INDEX numNodes = input[0].number_of_variables_;
         INDEX xEdgeDistance = 1;
@@ -411,6 +428,7 @@ namespace UAIMaxPotInput {
 
 
         std::vector<typename std::remove_reference_t<decltype(chain_constructor)>::max_chain_factor_container*> max_chain_potentials;
+        factor_tree<FMC> tree;
 
         for (const auto& currentChain : chains)
         {
@@ -504,12 +522,14 @@ namespace UAIMaxPotInput {
                 }
             }
 
-            auto* f = chain_constructor.add_max_chain(currentChain.begin(), currentChain.end(), maxPairwisePotentials, linearPairwisePotentials);
+            auto* f = chain_constructor.add_max_chain(currentChain.begin(), currentChain.end(), maxPairwisePotentials, linearPairwisePotentials, &tree);
             max_chain_potentials.push_back(f);
 
         }
 
-        auto* f = chain_constructor.add_max_potential(max_chain_potentials.begin(), max_chain_potentials.end());
+        auto* f = chain_constructor.add_max_potential(max_chain_potentials.begin(), max_chain_potentials.end(), &tree);
+
+        s.GetLP().add_tree(tree);
 
         return read_suc;
    }
