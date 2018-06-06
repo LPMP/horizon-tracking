@@ -1409,7 +1409,7 @@ class max_potential_on_tree {
         }
 
 };
-REAL max_potential_on_tree::MaxPotentialLowerBoundForAllTrees = std::numeric_limits<REAL>::min();
+REAL max_potential_on_tree::MaxPotentialLowerBoundForAllTrees = std::numeric_limits<REAL>::min(); //TODO: Will need to be re-initialized for a new instance.
 
 
 class unary_max_potential_on_chain_message {
@@ -1627,7 +1627,7 @@ class max_factor_tree_graph_message {
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
         bool CheckPrimalConsistency(const LEFT_FACTOR& l, const RIGHT_FACTOR& r) const
         {
-            r.max_potential_index(entry) == l.max_potential_index();
+            return r.max_potential_index(entry) == l.max_potential_index();
         } 
 
         template<typename SOLVER, typename LEFT_FACTOR, typename RIGHT_FACTOR>
