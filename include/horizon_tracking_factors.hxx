@@ -501,6 +501,17 @@ class ShortestPathTreeInChain {
                 ComputeSolution();
             }
 
+            // This function will only compute the marginals, not the solution objective nor the primal solution.
+            void Solve() const
+            {
+                if (UseEdgeDeletion)
+                    SolveByEdgeDeletion();
+                else
+                    SolveByEdgeAddition();
+
+                MaxPotMarginalsInitialized = true;
+            }
+
             std::size_t max_potential_index() const { return max_potential_index_; }
         
             std::array<REAL,3>& max_potential_marginal(const std::size_t i) { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
@@ -569,17 +580,6 @@ class ShortestPathTreeInChain {
                     solution_[currentNodeToBackTrack - 1] = spTree.GetParentLabel(currentNodeToBackTrack + 1, currentLabel);
                     currentLabel = solution_[currentNodeToBackTrack];
                 }
-            }
-
-            // This function will only compute the marginals, not the solution objective nor the primal solution.
-            void Solve() const
-            {
-                if (UseEdgeDeletion)
-                    SolveByEdgeDeletion();
-                else
-                    SolveByEdgeAddition();
-
-                MaxPotMarginalsInitialized = true;
             }
 
             void SolveByEdgeAddition() const
