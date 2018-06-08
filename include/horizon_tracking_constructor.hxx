@@ -35,7 +35,7 @@ max_chain_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end,
         const INDEX i = (*it);
         no_labels.push_back( this->GetNumberOfLabels(i) );
     }
-    auto* f = this->lp_->template add_factor<max_chain_factor_container>(maxPairwisePotentials, linearPairwisePotentials, no_labels);
+    auto* f = this->lp_->template add_factor<max_chain_factor_container>(maxPairwisePotentials, linearPairwisePotentials, no_labels, false);
 
     INDEX c=0;
     for(auto it = var_begin; std::next(it, 1)!=var_end; ++it, ++c) {
@@ -59,7 +59,7 @@ max_potential_factor_container* add_max_potential(ITERATOR max_chain_begin, ITER
     std::vector<std::vector<std::array<REAL,2>>> all_marginals;
     for(auto max_chain_it = max_chain_begin; max_chain_it!=max_chain_end; ++max_chain_it) {
         auto* f = (*max_chain_it)->GetFactor();
-        f->Solve();
+        f->MaximizePotentialAndComputePrimal();
         std::vector<std::array<REAL,3>> current_chain_marginals = f->max_potential_marginals();
         std::vector<std::array<REAL,2>> current_chain_marginals_max;
         for (auto current_marginal_item : current_chain_marginals)
@@ -71,7 +71,7 @@ max_potential_factor_container* add_max_potential(ITERATOR max_chain_begin, ITER
 
     auto* m = this->lp_->template add_factor<max_potential_factor_container>(all_marginals);
     for(auto max_chain_it = max_chain_begin; max_chain_it!=max_chain_end; ++max_chain_it) {
-        const auto i = std::distance(max_chain_it, max_chain_begin);
+        const auto i = std::distance(max_chain_begin, max_chain_it);
         auto* c = *max_chain_it;
 
         auto* msg = this->lp_->template add_message<max_chain_max_potential_message_container>(c, m, i);
