@@ -458,7 +458,9 @@ class ShortestPathTreeInChain {
 
             REAL LowerBound() const
             {
-                ComputeSolution();
+                if (maxPotThreshSet)
+                    ComputeSolution();
+    
                 return solutionObjective;
                 // compute optimal solution and return its cost
             }
@@ -481,7 +483,8 @@ class ShortestPathTreeInChain {
                 if (!marginals_set)
                     Solve();
 
-                ComputeSolution();
+                if (maxPotThreshSet)
+                    ComputeSolution();
                 // compute optimal solution and store it
             }
 
@@ -492,6 +495,7 @@ class ShortestPathTreeInChain {
             void init_primal() 
             {
                 marginals_set = false;
+                maxPotThreshSet = false;
             } 
             
             template<typename ARRAY>
@@ -532,6 +536,7 @@ class ShortestPathTreeInChain {
 
             void set_max_potential_index(const std::size_t index)
             {
+                maxPotThreshSet = true;
                 assert(marginals_set);
                 if (max_potential_index_ == index)
                     return; // Can use this for optimization.
@@ -570,6 +575,7 @@ class ShortestPathTreeInChain {
             mutable std::vector<std::array<REAL,3>> max_potential_marginals_; // (i) max potential, (ii) minimum linear potential, (iii) cost of configuration 
             mutable bool MaxPotMarginalsInitialized = false;
             mutable bool marginals_set = false;
+            mutable bool maxPotThreshSet = false;
 
             bool UseEdgeDeletion;
 
@@ -623,6 +629,7 @@ class ShortestPathTreeInChain {
             // TODO: There should be a flag for knowing if we need to recompute or not
             void ComputeSolution() const
             {
+                assert(maxPotThreshSet);
                 REAL maxPotThreshold = max_potential_marginals_[max_potential_index_][0];
                 ShortestPathTreeInChain spTree = FindAndInitializeSPTree(maxPotThreshold);
                 solutionObjective = max_potential_marginals_[max_potential_index_][2] + spTree.GetDistance(NumNodes, 0);

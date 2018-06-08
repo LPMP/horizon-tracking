@@ -28,15 +28,39 @@ int main()
     MaxPairwisePotentials(1,1,2) = 6;
 
     {
+        std::vector<std::vector<std::array<REAL,2>>> all_marginals;
         max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, true);
-        REAL objective = chain.LowerBound();
-        test(objective == 1);
+        chain.MaximizePotentialAndComputePrimal();
+        std::vector<std::array<REAL,3>> current_chain_marginals = chain.max_potential_marginals();
+        std::vector<std::array<REAL,2>> current_chain_marginals_max;
+        for (auto current_marginal_item : current_chain_marginals)
+        {
+            current_chain_marginals_max.push_back({current_marginal_item[0], current_marginal_item[1]});   // Ignoring the third column in the first iteration. 
+        }
+        all_marginals.push_back(current_chain_marginals_max);
+        max_potential_on_graph graph = max_potential_on_graph(all_marginals);
+        graph.MaximizePotentialAndComputePrimal();
+        chain.set_max_potential_index(graph.max_potential_index(0));
+        chain.MaximizePotentialAndComputePrimal();
+        test(graph.EvaluatePrimal() + chain.EvaluatePrimal() == 1);
     }
 
     {   
+        std::vector<std::vector<std::array<REAL,2>>> all_marginals;
         max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, false);
-        REAL objective = chain.LowerBound();
-        test(objective == 1);
+        chain.MaximizePotentialAndComputePrimal();
+        std::vector<std::array<REAL,3>> current_chain_marginals = chain.max_potential_marginals();
+        std::vector<std::array<REAL,2>> current_chain_marginals_max;
+        for (auto current_marginal_item : current_chain_marginals)
+        {
+            current_chain_marginals_max.push_back({current_marginal_item[0], current_marginal_item[1]});   // Ignoring the third column in the first iteration. 
+        }
+        all_marginals.push_back(current_chain_marginals_max);
+        max_potential_on_graph graph = max_potential_on_graph(all_marginals);
+        graph.MaximizePotentialAndComputePrimal();
+        chain.set_max_potential_index(graph.max_potential_index(0));
+        chain.MaximizePotentialAndComputePrimal();
+        test(graph.EvaluatePrimal() + chain.EvaluatePrimal() == 1);
     }
 
     // now add linear potentials
@@ -55,29 +79,76 @@ int main()
     LinearPairwisePotentials(1,1,2) = 0;
 
     {
-        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, true);
-        REAL objective = chain.LowerBound();
-        test(objective == 6);
+        std::vector<std::vector<std::array<REAL,2>>> all_marginals;
+        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, false);
+        chain.MaximizePotentialAndComputePrimal();
+        std::vector<std::array<REAL,3>> current_chain_marginals = chain.max_potential_marginals();
+        std::vector<std::array<REAL,2>> current_chain_marginals_max;
+        for (auto current_marginal_item : current_chain_marginals)
+        {
+            current_chain_marginals_max.push_back({current_marginal_item[0], current_marginal_item[1]});
+        }
+        all_marginals.push_back(current_chain_marginals_max);
+        max_potential_on_graph graph = max_potential_on_graph(all_marginals);
+        graph.MaximizePotentialAndComputePrimal();
+        chain.set_max_potential_index(graph.max_potential_index(0));
+        chain.MaximizePotentialAndComputePrimal();
+        test(graph.EvaluatePrimal() + chain.EvaluatePrimal() == 6);
     }
     {
-        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, false);
-        REAL objective = chain.LowerBound();
-        test(objective == 6);
+        std::vector<std::vector<std::array<REAL,2>>> all_marginals;
+        max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, true);
+        chain.MaximizePotentialAndComputePrimal();
+        std::vector<std::array<REAL,3>> current_chain_marginals = chain.max_potential_marginals();
+        std::vector<std::array<REAL,2>> current_chain_marginals_max;
+        for (auto current_marginal_item : current_chain_marginals)
+        {
+            current_chain_marginals_max.push_back({current_marginal_item[0], current_marginal_item[1]});
+        }
+        all_marginals.push_back(current_chain_marginals_max);
+        max_potential_on_graph graph = max_potential_on_graph(all_marginals);
+        graph.MaximizePotentialAndComputePrimal();
+        chain.set_max_potential_index(graph.max_potential_index(0));
+        chain.MaximizePotentialAndComputePrimal();
+        test(graph.EvaluatePrimal() + chain.EvaluatePrimal() == 6);
     }
 
     LinearPairwisePotentials(0,2,0) = 1.5;
     LinearPairwisePotentials(1,0,2) = 1.5;
 
     {
+        std::vector<std::vector<std::array<REAL,2>>> all_marginals;
         max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, true);
-        REAL objective = chain.LowerBound();
-        test(objective == 4);
+        chain.MaximizePotentialAndComputePrimal();
+        std::vector<std::array<REAL,3>> current_chain_marginals = chain.max_potential_marginals();
+        std::vector<std::array<REAL,2>> current_chain_marginals_max;
+        for (auto current_marginal_item : current_chain_marginals)
+        {
+            current_chain_marginals_max.push_back({current_marginal_item[0], current_marginal_item[1]});   
+        }
+        all_marginals.push_back(current_chain_marginals_max);
+        max_potential_on_graph graph = max_potential_on_graph(all_marginals);
+        graph.MaximizePotentialAndComputePrimal();
+        chain.set_max_potential_index(graph.max_potential_index(0));
+        chain.MaximizePotentialAndComputePrimal();
+        test(graph.EvaluatePrimal() + chain.EvaluatePrimal() == 4);
     }
 
     {
+        std::vector<std::vector<std::array<REAL,2>>> all_marginals;
         max_potential_on_chain chain = max_potential_on_chain(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, false);
-        REAL objective = chain.LowerBound();
-        test(objective == 4);
+        chain.MaximizePotentialAndComputePrimal();
+        std::vector<std::array<REAL,3>> current_chain_marginals = chain.max_potential_marginals();
+        std::vector<std::array<REAL,2>> current_chain_marginals_max;
+        for (auto current_marginal_item : current_chain_marginals)
+        {
+            current_chain_marginals_max.push_back({current_marginal_item[0], current_marginal_item[1]});  
+        }
+        all_marginals.push_back(current_chain_marginals_max);
+        max_potential_on_graph graph = max_potential_on_graph(all_marginals);
+        graph.MaximizePotentialAndComputePrimal();
+        chain.set_max_potential_index(graph.max_potential_index(0));
+        chain.MaximizePotentialAndComputePrimal();
+        test(graph.EvaluatePrimal() + chain.EvaluatePrimal() == 4);
     }
-
 }
