@@ -1674,27 +1674,18 @@ class max_factor_tree_graph_message {
         void RepamRight(FACTOR& r, const MSG& msg)
         {
             assert(r.marginals()[entry].size() == msg.size());
-            std::cout<<"\n Algo 1 Linear Pot:"<<std::endl;
-            for(auto& x : r.marginals()[entry]) { std::cout<<x[1]<<", ";}
             for(std::size_t i=0; i<r.marginals()[entry].size(); ++i) {
                 r.marginals()[entry][i][1] += msg[i];
             }
-            std::cout<<"\n Algo 1 Linear Pot After:"<<std::endl;
-            for(auto& x : r.marginals()[entry]) { std::cout<<x[1]<<", ";}
         }
 
         template<typename FACTOR, typename MSG>
         void RepamLeft(FACTOR& l, const MSG& msg)
         {
             assert(msg.size() == l.max_potential_marginals().size());
-            std::cout<<"\n Config. Cost:"<<std::endl;
-            for(auto& x : l.max_potential_marginals()) { std::cout<<x[2]<<", ";}
-
             for(std::size_t i=0; i<msg.size(); ++i) {
                 l.max_potential_marginal(i)[2] += msg[i]; 
             }
-            std::cout<<"\n  Config. Cost After:"<<std::endl;
-            for(auto& x : l.max_potential_marginals()) { std::cout<<x[2]<<", ";}
         }
 
         template<typename LEFT_FACTOR, typename MSG>
@@ -1706,15 +1697,7 @@ class max_factor_tree_graph_message {
             }
             const auto min = m.min();
             for(auto& x : m) { x-= min; }
-            std::cout<<"\n \n send_message_to_right:";
-            std::cout<<"\n Min m:"<<min; 
-            std::cout<<"\n m:";
-            for(auto& x : m) { std::cout<<x<<", ";}
             msg -= omega*m; 
-            std::cout<<"\n send_message_to_right After";
-            std::cout<<"\n m:";
-            for(auto& x : m) { std::cout<<x<<", ";}
-            std::cout<<"\n send_message_to_right_end";
         }
 
         template<typename RIGHT_FACTOR, typename MSG>
