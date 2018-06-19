@@ -23,19 +23,26 @@ using pairwise_max_factor_message_container = PAIRWISE_MAX_CHAIN_MESSAGE;
 using max_chain_max_potential_message_container = MAX_CHAIN_MAX_POTENTIAL_MESSAGE;
 using mrf_constructor::mrf_constructor;
 
-template<typename ITERATOR>
-max_chain_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end, 
-                                    const tensor3_variable<REAL>& maxPairwisePotentials, 
-                                    const tensor3_variable<REAL>& linearPairwisePotentials,
+template <typename ITERATOR, typename TENSORSIZE>
+max_chain_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end,
+                                    TENSORSIZE potSizeBegin, TENSORSIZE potSizeEnd, 
+                                    const tensor3_variable<REAL>& maxPairwisePotentials,
                                     factor_tree<FMC>* t = nullptr)
 {
-    const INDEX no_vars = std::distance(var_begin, var_end);
-    std::vector<INDEX> no_labels;
+    std::vector<INDEX> numLabels;
     for(auto it = var_begin; it!=var_end; ++it) {
         const INDEX i = (*it);
-        no_labels.push_back( this->GetNumberOfLabels(i) );
+        numLabels.push_back( this->GetNumberOfLabels(i) );
     }
-    auto* f = this->lp_->template add_factor<max_chain_factor_container>(maxPairwisePotentials, linearPairwisePotentials, no_labels, false);
+    tensor3_variable<REAL> linearPairwisePotentials(potSizeBegin, potSizeEnd);
+    for(std::size_t n1=0; n1<maxPairwisePotentials.dim1(); ++n1) {
+        for(std::size_t i=0; i<maxPairwisePotentials.dim2(n1); ++i) {
+            for(std::size_t j=0; j<maxPairwisePotentials.dim3(n1); ++j) {
+                linearPairwisePotentials(n1, i, j) = 0.0;
+            }
+        }
+    }
+    auto* f = this->lp_->template add_factor<max_chain_factor_container>(maxPairwisePotentials, linearPairwisePotentials, numLabels, false);
 
     INDEX c=0;
     for(auto it = var_begin; std::next(it, 1)!=var_end; ++it, ++c) {
@@ -49,7 +56,53 @@ max_chain_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end,
         }
     }
 
+    return f;
+}
 
+template<typename ITERATOR>
+max_potential_factor_container* add_max_potential(ITERATOR max_chain_begin, ITERATOR max_chain_end, factor_tree<FMC>* t = nullptr)
+{
+    std::vector<std::vector<std::array<REAL,2>>> all_marginals;
+    for(auto max_chain_it = max_chain_begin; max_chain_it!=max_chain_end; ++max_chain_it) {
+        auto* f = (*max_chain_it)->GetFactor();
+        f->MaximizePotentialAndComputePrimal();
+        std::vector<std::array<REAL,3>> current_chain_marginals = f->max_potential_marginals();
+        std::vector<std::array<REAL,2>> current_chain_marginals_max;
+        for (auto current_marginal_item : current_chain_marginals)
+        {
+            current_chain_marginals_max.push_back({current_marginal_item[0], current_marginal_item[1]});   // Ignoring the third column in the first iteration. 
+        }
+        all_marginals.push_back(current_chain_marginals_max);
+    }
+
+    auto* m = this->lp_->template add_factor<max_potential_factor_container>(all_marginals);
+    for(auto max_chain_it = max_chain_begin; max_chain_it!=max_chain_end; ++max_chain_it) {
+        const auto i = std::distance(max_chain_begin, max_chain_it);
+        auto* c = *max_chain_it;
+
+        auto* msg = this->lp_->template add_message<max_chain_max_potential_message_container>(c, m, i);
+
+        if(t != nullptr) {
+            t->add_message(msg, Chirality::right);
+        } 
+    }
+    return m;
+}
+};
+
+template<typename FMC, typename MAX_CHAIN_FACTOR, typename MAX_POTENTIAL_FACTOR, typename MAX_CHAIN_MAX_POTENTIAL_MESSAGE>
+class max_disjoint_chain_constructor {
+public:
+using max_chain_factor_container = MAX_CHAIN_FACTOR;
+using max_potential_factor_container = MAX_POTENTIAL_FACTOR;
+using max_chain_max_potential_message_container = MAX_CHAIN_MAX_POTENTIAL_MESSAGE;
+
+max_chain_factor_container* add_max_chain(const tensor3_variable<REAL>& linearPairwisePotentials, 
+                                    const tensor3_variable<REAL>& maxPairwisePotentials,
+                                    const std::vector<INDEX>& numLabels,
+                                    factor_tree<FMC>* t = nullptr)
+{
+    auto* f = this->lp_->template add_factor<max_chain_factor_container>(maxPairwisePotentials, linearPairwisePotentials, numLabels, false);
     return f;
 }
 
@@ -349,6 +402,128 @@ namespace UAIMaxPotInput {
         */
     }
 
+template<typename SOLVER>
+   bool ParseProblemChains(const std::string& filename, SOLVER& s)
+   {
+        using FMC = typename SOLVER::FMC;
+        auto& chain_constructor = s.template GetProblemConstructor<0>();
+
+        std::cout << "parsing " << filename << "\n";
+        pegtl::file_parser problem(filename);
+        std::vector<MaxPotInput> input;
+        bool read_suc = problem.parse< grammar, action >(input);
+        assert(read_suc);
+        assert(input.size() == 2); // One max potential and one linear potential field
+       
+        INDEX numNodes = input[0].number_of_variables_;
+        std::vector<INDEX> numLabels;
+        std::vector<typename std::remove_reference_t<decltype(chain_constructor)>::max_chain_factor_container*> max_chain_potentials;
+        factor_tree<FMC> tree;
+
+        std::vector<std::vector<INDEX>> functionTableSizes;
+        //TODO: Add functionality for multiple disjoint chains.
+        for (INDEX currentNodeIndex = 0; currentNodeIndex != numNodes - 1; ++currentNodeIndex)
+        {
+            INDEX l1Size = input[0].cardinality_[currentNodeIndex];
+            INDEX l2Size = input[0].cardinality_[currentNodeIndex + 1];
+            //Assuming equivalent max potential and linear potential graphs:
+            assert(input[0].cardinality_[currentNodeIndex] == input[1].cardinality_[currentNodeIndex]);
+            assert(input[0].cardinality_[currentNodeIndex + 1] == input[1].cardinality_[currentNodeIndex + 1]);
+            functionTableSizes.push_back(std::vector<INDEX>{l1Size, l2Size});
+
+            numLabels.push_back(l1Size);
+            if (currentNodeIndex == numNodes - 2)
+                numLabels.push_back(l2Size);
+        }
+
+        tensor3_variable<REAL> linearPairwisePotentials(functionTableSizes.begin(), functionTableSizes.end());
+        tensor3_variable<REAL> maxPairwisePotentials(functionTableSizes.begin(), functionTableSizes.end());
+            
+        // Populate potentials:
+        for (INDEX currentPotentialsIndex = 0; currentPotentialsIndex < input.size(); currentPotentialsIndex++)
+        { 
+            INDEX cliqueIndexChain = 0;
+            // process the pairwise potentials first:
+            for (INDEX cliqueIndex = 0; cliqueIndex < input[currentPotentialsIndex].clique_scopes_.size(); cliqueIndex++)
+            {
+                const auto& currentCliqueScope = input[currentPotentialsIndex].clique_scopes_[cliqueIndex];
+                if (currentCliqueScope.size() == 1)
+                    continue; // Add unaries later.
+
+                INDEX dim23InputIndex = 0;
+                for (INDEX l1 = 0; l1 < input[currentPotentialsIndex].cardinality_[currentCliqueScope[0]]; l1++)
+                {
+                    for (INDEX l2 = 0; l2 < input[currentPotentialsIndex].cardinality_[currentCliqueScope[1]]; l2++)
+                    {
+                        if (currentPotentialsIndex == 0)
+                            linearPairwisePotentials(cliqueIndexChain, l1, l2) = input[currentPotentialsIndex].function_tables_[cliqueIndex][dim23InputIndex];
+                        
+                        else
+                            maxPairwisePotentials(cliqueIndexChain, l1, l2) = input[currentPotentialsIndex].function_tables_[cliqueIndex][dim23InputIndex];
+
+                        dim23InputIndex++;
+                    }
+                }
+                cliqueIndexChain++;
+            }
+        }
+
+        for (INDEX currentPotentialsIndex = 1; currentPotentialsIndex < input.size(); currentPotentialsIndex++)
+        { 
+            for (INDEX cliqueIndex = 0; cliqueIndex < input[currentPotentialsIndex].clique_scopes_.size(); cliqueIndex++)
+            {
+                const auto& currentCliqueScope = input[currentPotentialsIndex].clique_scopes_[cliqueIndex];
+                if (currentCliqueScope.size() != 1)
+                    continue;
+                
+                INDEX edgeIndexToRight = currentCliqueScope[0];
+                if (edgeIndexToRight < numNodes - 1)
+                {
+                    // Send to the edges on the right:
+                    INDEX numStatesCurrentNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0]];
+                    INDEX numStatesNextNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0] + 1];
+                    for (INDEX l1 = 0; l1 < numStatesCurrentNode; l1++)
+                    {
+                        for (INDEX l2 = 0; l2 < numStatesNextNode; l2++)
+                        {
+                            if (currentPotentialsIndex == 0)
+                                linearPairwisePotentials(edgeIndexToRight, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
+                            else
+                                maxPairwisePotentials(edgeIndexToRight, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
+                        }
+                    }
+                }
+                else
+                {
+                    // Send to the left edges for the corner nodes:
+                    INDEX edgeIndexToLeft = edgeIndexToRight - 1;
+                    INDEX numStatesCurrentNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0]];
+                    INDEX numStatesPrevNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0] - 1];
+                    for (INDEX l2 = 0; l2 < numStatesCurrentNode; l2++)
+                    {
+                        for (INDEX l1 = 0; l1 < numStatesPrevNode; l1++)
+                        {
+                            if (currentPotentialsIndex == 0)
+                                linearPairwisePotentials(edgeIndexToLeft, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
+                            else
+                                maxPairwisePotentials(edgeIndexToLeft, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
+                        }
+                    }
+                }
+            }
+        }
+
+        auto* f = chain_constructor.add_max_chain(linearPairwisePotentials, maxPairwisePotentials, numLabels, &tree);
+        max_chain_potentials.push_back(f);
+
+
+        chain_constructor.add_max_potential(max_chain_potentials.begin(), max_chain_potentials.end(), &tree);
+        tree.init();
+        s.GetLP().add_tree(tree);
+
+        return read_suc;
+   }
+
    template<typename SOLVER>
    bool ParseProblemGridAndDecomposeToChains(const std::string& filename, SOLVER& s)
    {
@@ -424,7 +599,6 @@ namespace UAIMaxPotInput {
 
         std::vector<typename std::remove_reference_t<decltype(chain_constructor)>::max_chain_factor_container*> max_chain_potentials;
         factor_tree<FMC> tree;
-
         for (const auto& currentChain : chains)
         {
             std::vector<std::vector<INDEX>> functionTableSizes;
@@ -439,63 +613,19 @@ namespace UAIMaxPotInput {
                 functionTableSizes.push_back(std::vector<INDEX>{l1Size, l2Size});
             }
 
-            tensor3_variable<REAL> linearPairwisePotentials(functionTableSizes.begin(), functionTableSizes.end());
             tensor3_variable<REAL> maxPairwisePotentials(functionTableSizes.begin(), functionTableSizes.end());
             
-            for (INDEX currentPotentialsIndex = 0; currentPotentialsIndex < input.size(); currentPotentialsIndex++)
+            // Populate max potentials:
+            for (INDEX currentPotentialsIndex = 1; currentPotentialsIndex < input.size(); currentPotentialsIndex++)
             { 
                 INDEX cliqueIndexChain = 0;
+                // process the pairwise potentials first:
                 for (INDEX cliqueIndex = 0; cliqueIndex < input[currentPotentialsIndex].clique_scopes_.size(); cliqueIndex++)
                 {
                     const auto& currentCliqueScope = input[currentPotentialsIndex].clique_scopes_[cliqueIndex];
-
-                    // node potentials:
                     if (currentCliqueScope.size() == 1)
-                    {
-                        // Check if the current node is present in the current chain, then transfer the unaries to pairwise terms
-                        if (currentChain.count(currentCliqueScope[0]) > 0)
-                        {
-                            INDEX chainDelta = *std::next(currentChain.begin(), 1) - *currentChain.begin();
-                            INDEX edgeIndexToRight = (currentCliqueScope[0] - *currentChain.begin()) / chainDelta;
-                            if (edgeIndexToRight < currentChain.size() - 1)
-                            {
-                                // Send to the edges on the right:
-                                INDEX numStatesCurrentNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0]];
-                                INDEX numStatesNextNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0] + chainDelta];
-                                for (INDEX l1 = 0; l1 < numStatesCurrentNode; l1++)
-                                {
-                                    for (INDEX l2 = 0; l2 < numStatesNextNode; l2++)
-                                    {
-                                        if (currentPotentialsIndex == 0)
-                                            linearPairwisePotentials(edgeIndexToRight, l1, l2) = input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
-                                        else
-                                            maxPairwisePotentials(edgeIndexToRight, l1, l2) = input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                // Send to the left edges for the corner nodes:
-                                INDEX edgeIndexToLeft = edgeIndexToRight - 1;
-                                INDEX numStatesCurrentNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0]];
-                                INDEX numStatesPrevNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0] - chainDelta];
-                                for (INDEX l2 = 0; l2 < numStatesCurrentNode; l2++)
-                                {
-                                    for (INDEX l1 = 0; l1 < numStatesPrevNode; l1++)
-                                    {
-                                        if (currentPotentialsIndex == 0)
-                                            linearPairwisePotentials(edgeIndexToLeft, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
-                                        else
-                                            maxPairwisePotentials(edgeIndexToLeft, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
-                                    }
-                                }
-
-                            }
-                        }    
-                        continue;   
-                    }
-
-                    // edge potentials:
+                        continue; // Add unaries later.
+                    
                     if (currentChain.count(currentCliqueScope[0]) == 0 || 
                         currentChain.count(currentCliqueScope[1]) == 0) 
                         continue;   // Current clique is not present in the current chain.
@@ -505,11 +635,7 @@ namespace UAIMaxPotInput {
                     {
                         for (INDEX l2 = 0; l2 < input[currentPotentialsIndex].cardinality_[currentCliqueScope[1]]; l2++)
                         {
-                            if (currentPotentialsIndex == 0)
-                                linearPairwisePotentials(cliqueIndexChain, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][dim23InputIndex];
-                            else
-                                maxPairwisePotentials(cliqueIndexChain, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][dim23InputIndex];
-
+                            maxPairwisePotentials(cliqueIndexChain, l1, l2) = input[currentPotentialsIndex].function_tables_[cliqueIndex][dim23InputIndex];
                             dim23InputIndex++;
                         }
                     }
@@ -517,7 +643,50 @@ namespace UAIMaxPotInput {
                 }
             }
 
-            auto* f = chain_constructor.add_max_chain(currentChain.begin(), currentChain.end(), maxPairwisePotentials, linearPairwisePotentials, &tree);
+            for (INDEX currentPotentialsIndex = 1; currentPotentialsIndex < input.size(); currentPotentialsIndex++)
+            { 
+                for (INDEX cliqueIndex = 0; cliqueIndex < input[currentPotentialsIndex].clique_scopes_.size(); cliqueIndex++)
+                {
+                    const auto& currentCliqueScope = input[currentPotentialsIndex].clique_scopes_[cliqueIndex];
+                    if (currentCliqueScope.size() != 1)
+                        continue;
+                    
+                    if (currentChain.count(currentCliqueScope[0]) == 0) 
+                        continue;   // Current clique is not present in the current chain.
+
+                    INDEX chainDelta = *std::next(currentChain.begin(), 1) - *currentChain.begin();
+                    INDEX edgeIndexToRight = (currentCliqueScope[0] - *currentChain.begin()) / chainDelta;
+                    if (edgeIndexToRight < currentChain.size() - 1)
+                    {
+                        // Send to the edges on the right:
+                        INDEX numStatesCurrentNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0]];
+                        INDEX numStatesNextNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0] + chainDelta];
+                        for (INDEX l1 = 0; l1 < numStatesCurrentNode; l1++)
+                        {
+                            for (INDEX l2 = 0; l2 < numStatesNextNode; l2++)
+                            {
+                                maxPairwisePotentials(edgeIndexToRight, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Send to the left edges for the corner nodes:
+                        INDEX edgeIndexToLeft = edgeIndexToRight - 1;
+                        INDEX numStatesCurrentNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0]];
+                        INDEX numStatesPrevNode = input[currentPotentialsIndex].cardinality_[currentCliqueScope[0] - chainDelta];
+                        for (INDEX l2 = 0; l2 < numStatesCurrentNode; l2++)
+                        {
+                            for (INDEX l1 = 0; l1 < numStatesPrevNode; l1++)
+                            {
+                                maxPairwisePotentials(edgeIndexToLeft, l1, l2) += input[currentPotentialsIndex].function_tables_[cliqueIndex][l1];
+                            }
+                        }
+                    }
+                }
+            }
+
+            auto* f = chain_constructor.add_max_chain(currentChain.begin(), currentChain.end(), functionTableSizes.begin(), functionTableSizes.end(), maxPairwisePotentials, &tree);
             max_chain_potentials.push_back(f);
 
         }
