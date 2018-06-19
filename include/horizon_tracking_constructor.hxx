@@ -523,8 +523,8 @@ namespace UAIMaxPotInput {
         }
 
         auto* f = chain_constructor.add_max_potential(max_chain_potentials.begin(), max_chain_potentials.end(), &tree);
-        tree.init();
         s.GetLP().add_tree(tree);
+        s.GetLP().construct_decomposition();
 
         return read_suc;
    }

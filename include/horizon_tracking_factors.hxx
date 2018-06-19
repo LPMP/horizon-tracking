@@ -430,7 +430,8 @@ class ShortestPathTreeInChain {
             }
         };
         
-        public:       
+        public:     
+            tensor3_variable<REAL> LinearPairwisePotentials;  
             max_potential_on_chain(const tensor3_variable<REAL>& maxPairwisePotentials, const tensor3_variable<REAL>& linearPairwisePotentials, const std::vector<INDEX>& numLabels, bool useEdgeDeletion = true)
             :
                 LinearPairwisePotentials(linearPairwisePotentials),
@@ -453,15 +454,17 @@ class ShortestPathTreeInChain {
 
                 MaxPotsSortingOrder = GetPairwisePotsSortingOrder(MaxPotentials1D);
                 solution_.assign(NumNodes, 0);
+                init_primal();
                 InsertTerminalNode();
             }
 
             REAL LowerBound() const
             {
-                if (maxPotThreshSet)
-                    ComputeSolution();
-    
-                return solutionObjective;
+                if (!max_potential_marginals_valid_)
+                    Solve();
+                    
+                INDEX bestIndex = GetBestMarginal();
+                return max_potential_marginals_[bestIndex][1] + max_potential_marginals_[bestIndex][2];
                 // compute optimal solution and return its cost
             }
 
@@ -480,12 +483,21 @@ class ShortestPathTreeInChain {
 
             void MaximizePotentialAndComputePrimal() 
             {
-                if (!marginals_set)
-                    Solve();
-
-                if (maxPotThreshSet)
+                const bool labels_computed = *std::max_element(solution_.begin(), solution_.end()) < std::numeric_limits<INDEX>::max();
+                const bool max_potential_index_computed = max_potential_index_ != std::numeric_limits<std::size_t>::max();
+                
+                if(max_potential_index_computed && labels_computed) return;
+                if(max_potential_index_computed) { ComputeSolution(); return; }
+                if(!max_potential_index_computed && !labels_computed) { 
+                    if (!max_potential_marginals_valid_) {
+                        Solve();
+                        set_max_potential_index(GetBestMarginal());
+                    }
                     ComputeSolution();
-                // compute optimal solution and store it
+                }
+                if(labels_computed && !max_potential_index_computed) {
+                    assert(false);
+                }
             }
 
             template<class ARCHIVE> void serialize_primal(ARCHIVE& ar) { ar(); }
@@ -494,9 +506,15 @@ class ShortestPathTreeInChain {
             auto export_variables() { return std::tie( ); }
             void init_primal() 
             {
-                marginals_set = false;
-                maxPotThreshSet = false;
+                max_potential_index_ = std::numeric_limits<std::size_t>::max();
+                solutionObjective = std::numeric_limits<std::size_t>::max();
+                std::fill(solution_.begin(), solution_.end(), std::numeric_limits<INDEX>::max());
             } 
+
+            void invalidate_marginals()
+            {
+                max_potential_marginals_valid_ = false;
+            }
             
             template<typename ARRAY>
             void apply(ARRAY& a) const 
@@ -519,8 +537,6 @@ class ShortestPathTreeInChain {
                 assert(false);
             } 
 
-            tensor3_variable<REAL> LinearPairwisePotentials;
-
             INDEX& solution(const std::size_t i) 
             {
                 assert(i < solution_.size()); 
@@ -530,23 +546,22 @@ class ShortestPathTreeInChain {
             INDEX solution(const std::size_t i) const 
             {
                 assert(i < solution_.size());
-                assert(marginals_set);
+                const bool labels_computed = *std::max_element(solution_.begin(), solution_.end()) < std::numeric_limits<std::size_t>::max();
+                assert(labels_computed);
                 return solution_[i]; 
             }
 
-            void set_max_potential_index(const std::size_t index)
+            void set_max_potential_index(const std::size_t index) const
             {
-                maxPotThreshSet = true;
-                assert(marginals_set);
+                assert(max_potential_marginals_valid_);
                 if (max_potential_index_ == index)
-                    return; // Can use this for optimization.
+                    return; // Can use this for optimization?
 
                 max_potential_index_ = index;
             }
 
             std::size_t max_potential_index() const 
             {
-                assert(marginals_set);
                 return max_potential_index_;
             }
         
@@ -573,14 +588,13 @@ class ShortestPathTreeInChain {
             std::vector<INDEX> MaxPotsSortingOrder;
             tensor3_variable<REAL> MaxPairwisePotentials;
             mutable std::vector<std::array<REAL,3>> max_potential_marginals_; // (i) max potential, (ii) minimum linear potential, (iii) cost of configuration 
+            mutable bool max_potential_marginals_valid_ = false;
             mutable bool MaxPotMarginalsInitialized = false;
-            mutable bool marginals_set = false;
-            mutable bool maxPotThreshSet = false;
 
             bool UseEdgeDeletion;
 
             int NumNodes;
-            mutable REAL solutionObjective = std::numeric_limits<REAL>::infinity();
+            mutable REAL solutionObjective = std::numeric_limits<std::size_t>::max();
 
             // This function will only compute the marginals, not the solution objective nor the primal solution.
             void Solve() const
@@ -591,7 +605,7 @@ class ShortestPathTreeInChain {
                     SolveByEdgeAddition();
 
                 MaxPotMarginalsInitialized = true;
-                marginals_set = true;
+                max_potential_marginals_valid_ = true;
             }
 
             void InsertTerminalNode()
@@ -624,15 +638,35 @@ class ShortestPathTreeInChain {
                 NumNodes = NumNodes - 1;
                 NumLabels.pop_back();
             }
+
+            INDEX GetBestMarginal() const
+            {
+                assert(max_potential_marginals_valid_);
+                REAL bestCost = std::numeric_limits<std::size_t>::max();
+                INDEX bestIndex;
+
+                for (INDEX currentMaxPotIndex = 0; currentMaxPotIndex < max_potential_marginals_.size(); ++currentMaxPotIndex)
+                {
+                    auto currentMarginal = max_potential_marginals_[currentMaxPotIndex];
+                    auto currentCost = currentMarginal[0] + currentMarginal[1] + currentMarginal[2];
+                    if (currentCost < bestCost)
+                    {
+                        bestIndex = currentMaxPotIndex;
+                        bestCost = currentCost;
+                    }
+                }
+                return bestIndex;
+            }
             
             // Computes the primal solution and its objective and stores it.
             // TODO: There should be a flag for knowing if we need to recompute or not
             void ComputeSolution() const
             {
-                assert(maxPotThreshSet);
+                assert(max_potential_marginals_valid_);
                 REAL maxPotThreshold = max_potential_marginals_[max_potential_index_][0];
                 ShortestPathTreeInChain spTree = FindAndInitializeSPTree(maxPotThreshold);
-                solutionObjective = max_potential_marginals_[max_potential_index_][2] + spTree.GetDistance(NumNodes, 0);
+                solutionObjective =  max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
+                // max_potential_marginals_[max_potential_index_][2] + spTree.GetDistance(NumNodes, 0);
                 INDEX currentLabel = 0; // for terminal node;
                 for (int currentNodeToBackTrack = NumNodes - 1; currentNodeToBackTrack >= 1; currentNodeToBackTrack--) // Exclude source node.
                 {
@@ -1490,6 +1524,7 @@ class unary_max_potential_on_chain_message {
                     }
                 } 
             }
+            r.invalidate_marginals();
         }
 
         template<typename FACTOR, typename MSG>
@@ -1563,7 +1598,7 @@ class pairwise_max_factor_tree_message {
                     r.LinearPairwisePotentials(pairwise_entry, l1, l2) += msgs[i];
                 }
             }
-            
+            r.invalidate_marginals();
         }
 
         template<typename FACTOR, typename MSG>
@@ -1639,18 +1674,27 @@ class max_factor_tree_graph_message {
         void RepamRight(FACTOR& r, const MSG& msg)
         {
             assert(r.marginals()[entry].size() == msg.size());
+            std::cout<<"\n Algo 1 Linear Pot:"<<std::endl;
+            for(auto& x : r.marginals()[entry]) { std::cout<<x[1]<<", ";}
             for(std::size_t i=0; i<r.marginals()[entry].size(); ++i) {
                 r.marginals()[entry][i][1] += msg[i];
             }
+            std::cout<<"\n Algo 1 Linear Pot After:"<<std::endl;
+            for(auto& x : r.marginals()[entry]) { std::cout<<x[1]<<", ";}
         }
 
         template<typename FACTOR, typename MSG>
         void RepamLeft(FACTOR& l, const MSG& msg)
         {
             assert(msg.size() == l.max_potential_marginals().size());
+            std::cout<<"\n Config. Cost:"<<std::endl;
+            for(auto& x : l.max_potential_marginals()) { std::cout<<x[2]<<", ";}
+
             for(std::size_t i=0; i<msg.size(); ++i) {
                 l.max_potential_marginal(i)[2] += msg[i]; 
             }
+            std::cout<<"\n  Config. Cost After:"<<std::endl;
+            for(auto& x : l.max_potential_marginals()) { std::cout<<x[2]<<", ";}
         }
 
         template<typename LEFT_FACTOR, typename MSG>
@@ -1662,7 +1706,15 @@ class max_factor_tree_graph_message {
             }
             const auto min = m.min();
             for(auto& x : m) { x-= min; }
+            std::cout<<"\n \n send_message_to_right:";
+            std::cout<<"\n Min m:"<<min; 
+            std::cout<<"\n m:";
+            for(auto& x : m) { std::cout<<x<<", ";}
             msg -= omega*m; 
+            std::cout<<"\n send_message_to_right After";
+            std::cout<<"\n m:";
+            for(auto& x : m) { std::cout<<x<<", ";}
+            std::cout<<"\n send_message_to_right_end";
         }
 
         template<typename RIGHT_FACTOR, typename MSG>
