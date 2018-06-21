@@ -110,7 +110,7 @@ namespace LP_MP {
                 std::unordered_set<INDEX> coveredTables;
                 INDEX numTables = marginals_.size();
                 REAL s = 0;
-                std::vector<INDEX> l(numTables, INFINITY);
+                std::vector<REAL> l(numTables, INFINITY);
                 double bestObjective = INFINITY;
                 std::vector<INDEX> bestLabelsForTables(numTables);
                 std::vector<INDEX> lablesForTables(numTables);
@@ -148,7 +148,7 @@ namespace LP_MP {
                     if (coveredTables.size() == numTables && bestObjective > s + currentMaxCost) 
                     {
                         bestObjective = s + currentMaxCost;
-                        solutionObjective  = currentMaxCost;
+                        solutionObjective = s + currentMaxCost;
                         bestLabelsForTables = lablesForTables;
                     }
                 }
@@ -432,12 +432,13 @@ class ShortestPathTreeInChain {
         
         public:     
             tensor3_variable<REAL> LinearPairwisePotentials;  
-            max_potential_on_chain(const tensor3_variable<REAL>& maxPairwisePotentials, const tensor3_variable<REAL>& linearPairwisePotentials, const std::vector<INDEX>& numLabels, bool useEdgeDeletion = true)
+            max_potential_on_chain(const tensor3_variable<REAL>& maxPairwisePotentials, const tensor3_variable<REAL>& linearPairwisePotentials, const std::vector<INDEX>& numLabels, INDEX chainIndex, bool useEdgeDeletion = true)
             :
                 LinearPairwisePotentials(linearPairwisePotentials),
                 MaxPairwisePotentials(maxPairwisePotentials),
                 NumNodes(numLabels.size()),
                 NumLabels(numLabels),
+                ChainIndex(chainIndex),
                 UseEdgeDeletion(useEdgeDeletion)
             {
                 assert(maxPairwisePotentials.dim1() + 1 == numLabels.size()); 
@@ -590,6 +591,7 @@ class ShortestPathTreeInChain {
             mutable std::vector<std::array<REAL,3>> max_potential_marginals_; // (i) max potential, (ii) minimum linear potential, (iii) cost of configuration 
             mutable bool max_potential_marginals_valid_ = false;
             mutable bool MaxPotMarginalsInitialized = false;
+            INDEX ChainIndex;
 
             bool UseEdgeDeletion;
 
@@ -696,10 +698,11 @@ class ShortestPathTreeInChain {
                     bool foundPath = UpdateDistances(currentEdgeToInsert, distanceFromSource, predecessors, MaxPotentials1D[currentEdgeToInsert].value);
 
                     REAL currentLinearCost =  distanceFromSource[NumNodes - 1][0]; 
-                    if (std::isinf(currentLinearCost))
-                        continue;
+                    
+                    //TODO: Storing ALL possible max potentials, even the ones which are not feasible!                    
+                    //if (std::isinf(currentLinearCost))
+                    //    continue;
                         
-                    //TODO: Storing ALL possible max potentials, even the ones which are not feasible!
                     if (!MaxPotMarginalsInitialized)
                         max_potential_marginals_.push_back({MaxPotentials1D[currentEdgeToInsert].value, currentLinearCost, 0});
                     
@@ -1641,6 +1644,7 @@ class pairwise_max_factor_tree_message {
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
         void ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
         {
+            assert(false);
             r.solution(unary_1) = l.primal()[0];
             r.solution(unary_2) = l.primal()[1];
         }

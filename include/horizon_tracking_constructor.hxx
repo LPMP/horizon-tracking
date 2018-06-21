@@ -27,6 +27,7 @@ template <typename ITERATOR, typename TENSORSIZE>
 max_chain_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end,
                                     TENSORSIZE potSizeBegin, TENSORSIZE potSizeEnd, 
                                     const tensor3_variable<REAL>& maxPairwisePotentials,
+                                    INDEX chainIndex,
                                     factor_tree<FMC>* t = nullptr)
 {
     std::vector<INDEX> numLabels;
@@ -42,7 +43,7 @@ max_chain_factor_container* add_max_chain(ITERATOR var_begin, ITERATOR var_end,
             }
         }
     }
-    auto* f = this->lp_->template add_factor<max_chain_factor_container>(maxPairwisePotentials, linearPairwisePotentials, numLabels, false);
+    auto* f = this->lp_->template add_factor<max_chain_factor_container>(maxPairwisePotentials, linearPairwisePotentials, numLabels, chainIndex, false);
 
     INDEX c=0;
     for(auto it = var_begin; std::next(it, 1)!=var_end; ++it, ++c) {
@@ -100,9 +101,10 @@ using max_chain_max_potential_message_container = MAX_CHAIN_MAX_POTENTIAL_MESSAG
 max_chain_factor_container* add_max_chain(const tensor3_variable<REAL>& linearPairwisePotentials, 
                                     const tensor3_variable<REAL>& maxPairwisePotentials,
                                     const std::vector<INDEX>& numLabels,
+                                    INDEX chainIndex,
                                     factor_tree<FMC>* t = nullptr)
 {
-    auto* f = this->lp_->template add_factor<max_chain_factor_container>(maxPairwisePotentials, linearPairwisePotentials, numLabels, false);
+    auto* f = this->lp_->template add_factor<max_chain_factor_container>(maxPairwisePotentials, linearPairwisePotentials, numLabels, chainIndex, false);
     return f;
 }
 
@@ -367,8 +369,8 @@ namespace UAIMaxPotInput {
             //std::cout << "pairwise potential on (" << var1 << "," << var2 << "):\n";
             for(INDEX l1=0; l1<dim1; ++l1) {
                 for(INDEX l2=0; l2<dim2; ++l2) {
-                    pairwise_cost(l1,l2) = input.function_tables_[i][l2*dim1 + l1];
-            //      std::cout << input.function_tables_[i][l2*dim1 + l1] << " ";
+                    pairwise_cost(l1,l2) = input.function_tables_[i][l1*dim2 + l2];
+            //      std::cout << input.function_tables_[i][l1*dim2 + l2] << " ";
                 }
             //   std::cout << "\n";
             }
@@ -513,7 +515,7 @@ template<typename SOLVER>
             }
         }
 
-        auto* f = chain_constructor.add_max_chain(linearPairwisePotentials, maxPairwisePotentials, numLabels, &tree);
+        auto* f = chain_constructor.add_max_chain(linearPairwisePotentials, maxPairwisePotentials, numLabels, 0, &tree);
         max_chain_potentials.push_back(f);
 
 
@@ -600,6 +602,7 @@ template<typename SOLVER>
 
         std::vector<typename std::remove_reference_t<decltype(chain_constructor)>::max_chain_factor_container*> max_chain_potentials;
         factor_tree<FMC> tree;
+        INDEX chainIndex = 0;
         for (const auto& currentChain : chains)
         {
             std::vector<std::vector<INDEX>> functionTableSizes;
@@ -687,7 +690,7 @@ template<typename SOLVER>
                 }
             }
 
-            auto* f = chain_constructor.add_max_chain(currentChain.begin(), currentChain.end(), functionTableSizes.begin(), functionTableSizes.end(), maxPairwisePotentials, &tree);
+            auto* f = chain_constructor.add_max_chain(currentChain.begin(), currentChain.end(), functionTableSizes.begin(), functionTableSizes.end(), maxPairwisePotentials, chainIndex++, &tree);
             max_chain_potentials.push_back(f);
 
         }
