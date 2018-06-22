@@ -16,7 +16,6 @@ namespace LP_MP {
             REAL value;
             INDEX tableIndex;
             INDEX labelIndex;
-            bool isAdded = false;
         };
 
         public:
@@ -28,7 +27,7 @@ namespace LP_MP {
                  {
                     for(std::size_t currentLabel = 0; currentLabel < marginals_[currentTableIndex].size(); ++currentLabel )
                     {
-                        MaxPotentials.push_back( { marginals_[currentTableIndex][currentLabel][0], currentTableIndex, currentLabel, false } );
+                        MaxPotentials.push_back( { marginals_[currentTableIndex][currentLabel][0], currentTableIndex, currentLabel } );
                     }
                 }
                 SortingOrder = GetMaxPotsSortingOrder(MaxPotentials);
@@ -177,7 +176,7 @@ class ShortestPathTreeInChain {
             INDEX parentLabel;
             std::unordered_set<INDEX> childLabels;
             std::unordered_set<INDEX> possibleChildLabels;
-            REAL distance = std::numeric_limits<REAL>::infinity();
+            REAL distance = std::numeric_limits<REAL>::max();
             bool status = true; // 1 -> Closed.
         };
 
@@ -393,7 +392,6 @@ class ShortestPathTreeInChain {
             REAL value;
             INDEX n1, n2; 
             INDEX l1, l2; 
-            bool isAdded = false;
         };
 
         struct AffectedVertex
@@ -448,7 +446,7 @@ class ShortestPathTreeInChain {
                     assert(maxPairwisePotentials.dim2(n1) == linearPairwisePotentials.dim2(n1) && maxPairwisePotentials.dim3(n1) == linearPairwisePotentials.dim3(n1));
                     for(std::size_t i=0; i<maxPairwisePotentials.dim2(n1); ++i) {
                         for(std::size_t j=0; j<maxPairwisePotentials.dim3(n1); ++j) {
-                            MaxPotentials1D.push_back( {maxPairwisePotentials(n1,i,j), n1, n1+1, i, j, false} );
+                            MaxPotentials1D.push_back( {maxPairwisePotentials(n1,i,j), n1, n1+1, i, j} );
                         }
                     }
                 }
@@ -686,7 +684,7 @@ class ShortestPathTreeInChain {
                 for (INDEX i = 0 ; i < NumNodes ; i++ )
                 {
                     if (i > 0)
-                        initialValue = std::numeric_limits<REAL>::infinity();
+                        initialValue = std::numeric_limits<REAL>::max();
 
                     distanceFromSource[i].resize(NumLabels[i], initialValue);
                 }
@@ -694,21 +692,34 @@ class ShortestPathTreeInChain {
                 INDEX currentMaxPotIndex = 0;
                 for(const auto& currentEdgeToInsert : MaxPotsSortingOrder)
                 {
-                    MaxPotentials1D[currentEdgeToInsert].isAdded = true;         // True allows the arc to be considered for shortest path
+                    REAL currentMaxPotValue = MaxPotentials1D[currentEdgeToInsert].value;
                     bool foundPath = UpdateDistances(currentEdgeToInsert, distanceFromSource, predecessors, MaxPotentials1D[currentEdgeToInsert].value);
 
                     REAL currentLinearCost =  distanceFromSource[NumNodes - 1][0]; 
-                    
+
                     //TODO: Storing ALL possible max potentials, even the ones which are not feasible!                    
-                    //if (std::isinf(currentLinearCost))
-                    //    continue;
+                    if (currentLinearCost == std::numeric_limits<REAL>::max())
+                       continue;
                         
                     if (!MaxPotMarginalsInitialized)
-                        max_potential_marginals_.push_back({MaxPotentials1D[currentEdgeToInsert].value, currentLinearCost, 0});
-                    
-                    else
                     {
+                        if(max_potential_marginals_.size() > 0 && max_potential_marginals_.back()[0] == MaxPotentials1D[currentEdgeToInsert].value)
+                        {
+                            max_potential_marginals_.back()[1] = std::min(max_potential_marginals_.back()[1], currentLinearCost);
+                        }
+                        else
+                            max_potential_marginals_.push_back({MaxPotentials1D[currentEdgeToInsert].value, currentLinearCost, 0});
+                    }
+                    else
+                    {                       
+                        if(currentMaxPotIndex > 0 && max_potential_marginals_[currentMaxPotIndex - 1][0] == MaxPotentials1D[currentEdgeToInsert].value)
+                        {
+                            max_potential_marginals_[currentMaxPotIndex - 1][1] = std::min(max_potential_marginals_[currentMaxPotIndex - 1][1], currentLinearCost);
+                            continue;
+                        }
+                        
                         assert(MaxPotentials1D[currentEdgeToInsert].value == max_potential_marginals_[currentMaxPotIndex][0]);
+                        
                         max_potential_marginals_[currentMaxPotIndex][1] = currentLinearCost;
                         currentMaxPotIndex++;
                     }
@@ -866,7 +877,7 @@ class ShortestPathTreeInChain {
                             spTree.SetStatus(currentAffectedNode[0], currentAffectedNode[1], 0);    //mark as open
                             INDEX bestParentLabel;
                             REAL bestParentMaxPotValue; 
-                            REAL bestParentDistance = std::numeric_limits<REAL>::infinity();
+                            REAL bestParentDistance = std::numeric_limits<REAL>::max();
                             for (INDEX prevLabel = 0; prevLabel < NumLabels[currentAffectedNode[0] - 2]; prevLabel++)
                             {
                                 REAL currentLinearPot = 0;
@@ -893,7 +904,7 @@ class ShortestPathTreeInChain {
                                 }
                             }
 
-                            if (!std::isinf(bestParentDistance))
+                            if (!std::isinf(bestParentDistance)) //TODO Replace by max
                             {
                                 REAL currentDistance = spTree.GetDistance(currentAffectedNode[0], currentAffectedNode[1]);
                                 locallyAffectedPQueue.push({currentAffectedNode[0], currentAffectedNode[1], bestParentLabel, bestParentDistance - currentDistance, bestParentDistance, bestParentMaxPotValue});
@@ -1195,7 +1206,7 @@ class max_potential_on_tree {
         mutable bool MaxPotMarginalsInitialized = false;
 
         bool boundsDirty = true;
-        mutable REAL solutionObjective = std::numeric_limits<REAL>::infinity();
+        mutable REAL solutionObjective = std::numeric_limits<REAL>::max();
 
         void ComputeMaxPotLowerBound() const
         {
