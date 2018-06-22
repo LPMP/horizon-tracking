@@ -430,7 +430,7 @@ class ShortestPathTreeInChain {
         
         public:     
             tensor3_variable<REAL> LinearPairwisePotentials;  
-            max_potential_on_chain(const tensor3_variable<REAL>& maxPairwisePotentials, const tensor3_variable<REAL>& linearPairwisePotentials, const std::vector<INDEX>& numLabels, INDEX chainIndex, bool useEdgeDeletion = true)
+            max_potential_on_chain(const tensor3_variable<REAL>& maxPairwisePotentials, const tensor3_variable<REAL>& linearPairwisePotentials, const std::vector<INDEX>& numLabels, INDEX chainIndex, bool useEdgeDeletion = false)
             :
                 LinearPairwisePotentials(linearPairwisePotentials),
                 MaxPairwisePotentials(maxPairwisePotentials),
@@ -800,7 +800,7 @@ class ShortestPathTreeInChain {
                 {                       
                     // Check if the current max potential value is also present in the marginals (can only be present at adjacent index as they are sorted),
                     // if yes just take the minimum of the linear costs.
-                    INDEX adjacentIndex = insertionIndex + insertEnd ? -1:1;
+                    INDEX adjacentIndex = insertionIndex + (insertEnd ? -1:1);
                     if (adjacentIndex >= 0 && adjacentIndex <= max_potential_marginals_.size() - 1 &&
                          max_potential_marginals_[adjacentIndex][0] == maxPotValue)
                     {
@@ -876,7 +876,7 @@ class ShortestPathTreeInChain {
 
                 //TODO: Only seeing the tree Max pot value is not going to work, we need to see the marginals for ALL possible paths,
                 ShortestPathTreeInChain spTree = FindAndInitializeSPTree();
-                REAL treeMaxPotsValue = spTree.GetMaxPotValueInTree().maxPotValue;
+                REAL treeMaxPotValue = spTree.GetMaxPotValueInTree().maxPotValue;
                 INDEX currentMaxPotIndex = max_potential_marginals_.size() - 1;
 
                 if (InsertMarginal(treeMaxPotValue, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0), false))
