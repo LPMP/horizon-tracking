@@ -543,6 +543,7 @@ template<typename SOLVER>
         build_mrf(chain_constructor, input[0]);
 
         auto trees = chain_constructor.compute_forest_cover();
+        auto forestEdgeIds = chain_constructor.compute_forest_cover_get_pairwiseIds();
         for(auto& tree : trees) {
             s.GetLP().add_tree(tree);
         }

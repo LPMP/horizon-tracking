@@ -10,7 +10,7 @@ using namespace LP_MP;
 int main()
 {
     {
-        char *argv[] = {"horizon_tracking_test", "-i", "../../test/Chain-3x1.uai", "--maxIter", "5", "--timeout", 60, "-v", "0", NULL};
+        char *argv[] = {"horizon_tracking_test", "-i", "../../test/Chain-3x1.uai", "--maxIter", "5", "--timeout", "60", "-v", "0", NULL};
         int argc = sizeof(argv) / sizeof(char*) - 1;
         using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
         solver_type solver(argc, argv);
@@ -19,7 +19,7 @@ int main()
         test(std::abs(solver.lower_bound() - 17) <= eps);
     }
     {
-        char *argv[] = {"horizon_tracking_test", "-i", "../../test/Grid-5x5.uai", "--maxIter", "50", "--timeout", 60, "-v", "1", NULL};
+        char *argv[] = {"horizon_tracking_test", "-i", "../../test/Grid-5x5.uai", "--maxIter", "50", "--timeout", "60", "-v", "1", NULL};
         int argc = sizeof(argv) / sizeof(char*) - 1;
         using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
         solver_type solver(argc, argv);

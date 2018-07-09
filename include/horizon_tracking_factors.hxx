@@ -20,14 +20,14 @@ namespace LP_MP {
 
         public:
             // indices correspond to: chain index, entry in chain, max pot value, linear cost.
-            max_potential_on_graph(const std::vector<std::vector<std::array<REAL,2>>>& marginals)
-            : marginals_(marginals)
+            max_potential_on_graph(const std::vector<std::vector<std::array<REAL,2>>>& marginals_collection)
+            : marginals_collection_(marginals_collection)
             {
-                for(std::size_t currentTableIndex = 0; currentTableIndex < marginals_.size(); ++currentTableIndex)
+                for(std::size_t currentTableIndex = 0; currentTableIndex < marginals_collection_.size(); ++currentTableIndex)
                  {
-                    for(std::size_t currentLabel = 0; currentLabel < marginals_[currentTableIndex].size(); ++currentLabel )
+                    for(std::size_t currentLabel = 0; currentLabel < marginals_collection_[currentTableIndex].size(); ++currentLabel )
                     {
-                        MaxPotentials.push_back( { marginals_[currentTableIndex][currentLabel][0], currentTableIndex, currentLabel } );
+                        MaxPotentials.push_back( { marginals_collection_[currentTableIndex][currentLabel][0], currentTableIndex, currentLabel } );
                     }
                 }
                 SortingOrder = GetMaxPotsSortingOrder(MaxPotentials);
@@ -73,31 +73,36 @@ namespace LP_MP {
                 assert(false);
             } 
 
-            INDEX& max_potential_index(const INDEX i) 
+            INDEX& max_potential_index(const INDEX tableIndex) 
             {
-                assert(i<max_potential_index_.size()); 
-                return max_potential_index_[i]; 
+                assert(tableIndex < max_potential_index_.size()); 
+                return max_potential_index_[tableIndex]; 
             }
-            INDEX max_potential_index(const INDEX i) const
+            INDEX max_potential_index(const INDEX tableIndex) const
             {
-                assert(i<max_potential_index_.size());
+                assert(tableIndex < max_potential_index_.size());
                 if (!primal_computed)
                     Solve();
 
-                return max_potential_index_[i]; 
+                return max_potential_index_[tableIndex]; 
             }
 
-            std::vector<std::vector<std::array<REAL,2>>>& marginals() 
+            std::vector<std::vector<std::array<REAL,2>>>& marginals_collection() 
             {
-                return marginals_; 
+                return marginals_collection_; 
             }
-            std::vector<std::vector<std::array<REAL,2>>> marginals() const 
+            std::vector<std::vector<std::array<REAL,2>>> marginals_collection() const 
             {
-                return marginals_; 
+                return marginals_collection_; 
             }
 
         private:
-            std::vector<std::vector<std::array<REAL,2>>> marginals_; // ?
+            std::vector<std::vector<std::array<REAL,2>>> marginals_collection_;
+
+            // For primal recovery: Compute slack and send message to chains. Contains: max pot value, linear pot value, chain index which can receive message (TODO: Can it be more than one?)
+            // TODO: Not needed during optimization only required for the last pass.
+            mutable std::vector<std::vector<std::array<REAL,2>>> graph_marginals; // same layout as marginals_collection_ but contains the sum of linear pots overall all tables (chains).
+
             std::vector<MaxPotentialElement> MaxPotentials;
             mutable std::vector<INDEX> max_potential_index_;
             mutable REAL solutionObjective;
@@ -107,20 +112,22 @@ namespace LP_MP {
             void Solve() const
             {
                 std::unordered_set<INDEX> coveredTables;
-                INDEX numTables = marginals_.size();
+                INDEX numTables = marginals_collection_.size();
                 REAL s = 0;
                 std::vector<REAL> l(numTables, INFINITY);
                 double bestObjective = INFINITY;
                 std::vector<INDEX> bestLabelsForTables(numTables);
                 std::vector<INDEX> lablesForTables(numTables);
+                graph_marginals.clear();
+                graph_marginals.resize(numTables);
 
                 for(const auto& currentElementToInsert : SortingOrder)
                 {
                     INDEX currentTableIndex = MaxPotentials[currentElementToInsert].tableIndex;
                     INDEX currentLabelIndex = MaxPotentials[currentElementToInsert].labelIndex;
-                    REAL currentLinearCost = marginals_[currentTableIndex][currentLabelIndex][1];
+                    REAL currentLinearCost = marginals_collection_[currentTableIndex][currentLabelIndex][1];
                     REAL currentMaxCost =  MaxPotentials[currentElementToInsert].value;
-                    assert(currentMaxCost == marginals_[currentTableIndex][currentLabelIndex][0]);
+                    assert(currentMaxCost == marginals_collection_[currentTableIndex][currentLabelIndex][0]);
 
                     // If the edge is not yet covered:
                     if (coveredTables.count(currentTableIndex) == 0)  
@@ -143,12 +150,18 @@ namespace LP_MP {
                         lablesForTables[currentTableIndex] = currentLabelIndex;
                     }
 
-                    // Found another solution which is better than the previous one, in which case mark current solution as the best so far.
-                    if (coveredTables.size() == numTables && bestObjective > s + currentMaxCost) 
+                    if (coveredTables.size() == numTables) 
                     {
-                        bestObjective = s + currentMaxCost;
-                        solutionObjective = s + currentMaxCost;
-                        bestLabelsForTables = lablesForTables;
+                        // Build all the marginals even the ones which cannot be optimal, as they are used for downward messages:
+                        graph_marginals[currentTableIndex].push_back({currentMaxCost, s});                  
+
+                        // Found another solution which is better than the previous one, in which case mark current solution as the best so far.
+                        if (bestObjective > s + currentMaxCost)
+                        {
+                            bestObjective = s + currentMaxCost;
+                            solutionObjective = s + currentMaxCost;
+                            bestLabelsForTables = lablesForTables;
+                        }
                     }
                 }
 
@@ -1050,12 +1063,14 @@ class LabelStateSpace {
                         lbKey->second = fmin(linearPot, lbKey->second);
                         return;
                     }
-                    else if (lbKey != potentials.begin()) // There is a key before the current element which needs to be checked with current max pot.
-                    {
-                        assert(maxPot > std::prev(lbKey)->first);
-                        if (!(linearPot < std::prev(lbKey)->second)) // Inserting has no benefit as linearPot is not strictly less than previous linear pot.
-                            return;
-                    }
+
+                    //Need to insert ALL max pots between lb and ub even if for now they dont seem optimal, they CAN become optimal after reparametrization!
+                    // else if (lbKey != potentials.begin()) // There is a key before the current element which needs to be checked with current max pot.
+                    // {
+                    //     assert(maxPot > std::prev(lbKey)->first);
+                    //     if (!(linearPot < std::prev(lbKey)->second)) // Inserting has no benefit as linearPot is not strictly less than previous linear pot.
+                    //         return;
+                    // }
                 }
                 potentials.insert(lbKey, std::pair<REAL, REAL>(maxPot, linearPot)); // Insert with hint 
                 if (maxPot == MaxPotentialLowerBound)
@@ -1073,6 +1088,7 @@ class LabelStateSpace {
             return MaxPotentialUpperBound;
         }
 
+        //TODO: Optimize this:
         void TakeUnion(LabelStateSpace newStateSpace)
         {
             assert(!isCleared());
@@ -1254,7 +1270,7 @@ class max_potential_on_tree {
             std::vector<INDEX> totalSentAndReceivedMessages(NumNodes, 0);
             std::vector<bool> messageReceived(NumNodes, false);
             INDEX edgeIndex = 0;
-            for (const auto & currentEdge : MessagePassingSchedule) // TODO: Assuming the edge index is the n1 of current edge.
+            for (const auto & currentEdge : MessagePassingSchedule)
             {
                 INDEX tail = currentEdge[0];
                 INDEX head = currentEdge[1];
@@ -1320,6 +1336,11 @@ class max_potential_on_tree {
             LabelStateSpace lhStateSpace(MaxPotentialLowerBoundForAllTrees, MaxPotentialUpperBound);
             for (INDEX lt = 0; lt < tailMessages.size(); lt++)
             {
+                // Assuming that the 2D matrix of potentials for each edge is stored always in the order in which tail always counts as l2 and head as l1.
+                // TODO: Maybe do not need isReverse if the above condition is satisfied?
+                assert(MaxPairwisePotentials.dim3(edgeIndex) == tailMessages.size());
+                assert(LinearPairwisePotentials.dim3(edgeIndex) == tailMessages.size()); 
+
                 REAL edgeMaxPot = !isReverse ? MaxPairwisePotentials(edgeIndex, lt, lh) : MaxPairwisePotentials(edgeIndex, lh, lt);
                 REAL edgeLinearPot = !isReverse ? LinearPairwisePotentials(edgeIndex, lt, lh) : LinearPairwisePotentials(edgeIndex, lh, lt);
                 if (!isTailLeaf)
@@ -1705,9 +1726,9 @@ class max_factor_tree_graph_message {
         template<typename FACTOR, typename MSG>
         void RepamRight(FACTOR& r, const MSG& msg)
         {
-            assert(r.marginals()[entry].size() == msg.size());
-            for(std::size_t i=0; i<r.marginals()[entry].size(); ++i) {
-                r.marginals()[entry][i][1] += msg[i];
+            assert(r.marginals_collection()[entry].size() == msg.size());
+            for(std::size_t i=0; i<r.marginals_collection()[entry].size(); ++i) {
+                r.marginals_collection()[entry][i][1] += msg[i];
             }
         }
 
