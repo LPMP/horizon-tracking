@@ -531,19 +531,39 @@ template<typename SOLVER>
    template<typename SOLVER>
    bool ParseProblemGridAndDecomposeToChains(const std::string& filename, SOLVER& s)
    {
-        using FMC = typename SOLVER::FMC;
-        auto& chain_constructor = s.template GetProblemConstructor<0>();
-
         std::cout << "parsing " << filename << "\n";
         pegtl::file_parser problem(filename);
         std::vector<MaxPotInput> input;
         bool read_suc = problem.parse< grammar, action >(input);
         assert(read_suc);
         assert(input.size() == 2); // One max potential and one linear potential field
+         build_bottleneck_labelling_problem_grid_chains(input, s);
+        return read_suc;
+   }
+
+    template<typename SOLVER>
+    bool ParseProblemStringGridAndDecomposeToChains(const std::string& instance, SOLVER& s)
+    {
+        std::cout << "parsing string\n";
+        std::vector<MaxPotInput> input;
+        bool read_suc = pegtl::parse<grammar, action>(instance,"",input);
+        if(read_suc) {
+            assert(input.size() == 2); // One max potential and one linear potential field
+            build_bottleneck_labelling_problem_grid_chains(input, s);
+        }
+        return read_suc;
+    }
+
+    template<typename SOLVER>
+    void build_bottleneck_labelling_problem_grid_chains(std::vector<MaxPotInput> input, SOLVER& s)
+    {
+        auto& chain_constructor = s.template GetProblemConstructor<0>();
+
+        using FMC = typename SOLVER::FMC;
         build_mrf(chain_constructor, input[0]);
 
         auto trees = chain_constructor.compute_forest_cover();
-        auto forestEdgeIds = chain_constructor.compute_forest_cover_get_pairwiseIds();
+        //auto forestEdgeIds = chain_constructor.compute_forest_cover_get_pairwiseIds();
         for(auto& tree : trees) {
             s.GetLP().add_tree(tree);
         }
@@ -679,8 +699,6 @@ template<typename SOLVER>
         auto* f = chain_constructor.add_max_potential(max_chain_potentials.begin(), max_chain_potentials.end(), &tree);
         s.GetLP().add_tree(tree);
         s.GetLP().construct_decomposition();
-
-        return read_suc;
    }
 }
 }

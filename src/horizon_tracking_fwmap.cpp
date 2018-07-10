@@ -9,4 +9,7 @@ int main(int argc, char** argv)
     solver_type solver(argc, argv);
     solver.ReadProblem(UAIMaxPotInput::ParseProblemGridAndDecomposeToChains<solver_type>);
     solver.Solve();
+    solver.GetLP().write_back_reparametrization();
+    // mark mrf factors
+    solver.GetLP();
 }
