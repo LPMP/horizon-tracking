@@ -1,8 +1,6 @@
 #include "test.h"
 #include "horizon_tracking.h"
-#include "horizon_tracking_constructor.hxx"
 #include "solver.hxx"
-#include "visitors/standard_visitor.hxx"
 #include "LP_FWMAP.hxx"
 #include "test_max_potential.hxx"
 
