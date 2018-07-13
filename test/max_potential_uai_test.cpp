@@ -15,7 +15,7 @@ int main()
         solver.Solve();
         test(std::abs(solver.lower_bound() - 17) <= eps);
         solver.GetLP().write_back_reparametrization();
-        solver.GetLP();
+        test(std::abs(solver.GetLP().original_factors_lower_bound() - 17) <= eps);
     }
     {
         using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
@@ -23,5 +23,7 @@ int main()
         UAIMaxPotInput::ParseProblemStringGridAndDecomposeToChains<solver_type>(grid_uai_input, solver);
         solver.Solve();
         test(std::abs(solver.lower_bound() - 4.307381) <= eps);
+        solver.GetLP().write_back_reparametrization();
+        test(std::abs(solver.GetLP().original_factors_lower_bound() - 4.307381) <= eps);
     }
 }
