@@ -3,6 +3,7 @@
 #include "solver.hxx"
 #include "LP_FWMAP.hxx"
 #include "test_max_potential.hxx"
+#include <type_traits>
 
 using namespace LP_MP;
 
@@ -16,6 +17,17 @@ int main()
         test(std::abs(solver.lower_bound() - 17) <= eps);
         solver.GetLP().write_back_reparametrization();
         test(std::abs(solver.GetLP().original_factors_lower_bound() - 17) <= eps);
+        auto numF = solver.GetLP().GetNumberOfFactors();
+        std::vector<FactorTypeAdapter*> factors;
+        for (auto i = 0; i < numF; i++)
+        {
+            auto currentF = solver.GetLP().GetFactor(i);
+            if (dynamic_cast<FMC_HORIZON_TRACKING::UnaryFactor*>(currentF) || 
+                dynamic_cast<FMC_HORIZON_TRACKING::PairwiseFactor*>(currentF))
+                factors.push_back(currentF);
+        }
+        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end());
+        solver.RegisterPrimal();
     }
     {
         using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
