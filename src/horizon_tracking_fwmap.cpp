@@ -11,7 +11,6 @@ int main(int argc, char** argv)
     solver.Solve();
     solver.GetLP().write_back_reparametrization();
     // mark mrf factors
-    solver.GetLP().write_back_reparametrization();
     auto numF = solver.GetLP().GetNumberOfFactors();
     std::vector<FactorTypeAdapter*> factors;
     for (auto i = 0; i < numF; i++)
