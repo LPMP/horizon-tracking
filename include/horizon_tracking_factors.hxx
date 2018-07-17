@@ -1691,7 +1691,7 @@ class pairwise_max_factor_tree_message {
         }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
-        void ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
+        void deactivated_ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
         {
             assert(false);
             r.solution(unary_1) = l.primal()[0];

@@ -26,8 +26,10 @@ int main()
                 dynamic_cast<FMC_HORIZON_TRACKING::PairwiseFactor*>(currentF))
                 factors.push_back(currentF);
         }
+        test(solver.primal_cost() == std::numeric_limits<REAL>::infinity());
         solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end());
         solver.RegisterPrimal();
+        test(std::abs(solver.primal_cost() - 17) <= eps);
     }
     {
         using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
