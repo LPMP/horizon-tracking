@@ -11,5 +11,16 @@ int main(int argc, char** argv)
     solver.Solve();
     solver.GetLP().write_back_reparametrization();
     // mark mrf factors
-    solver.GetLP();
+    solver.GetLP().write_back_reparametrization();
+    auto numF = solver.GetLP().GetNumberOfFactors();
+    std::vector<FactorTypeAdapter*> factors;
+    for (auto i = 0; i < numF; i++)
+    {
+        auto currentF = solver.GetLP().GetFactor(i);
+        if (dynamic_cast<FMC_HORIZON_TRACKING::UnaryFactor*>(currentF) || 
+            dynamic_cast<FMC_HORIZON_TRACKING::PairwiseFactor*>(currentF))
+            factors.push_back(currentF);
+    }
+    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end());
+    solver.RegisterPrimal();
 }
