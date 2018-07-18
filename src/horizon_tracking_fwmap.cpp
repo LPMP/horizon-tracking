@@ -22,4 +22,6 @@ int main(int argc, char** argv)
     }
     solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end());
     solver.RegisterPrimal();
+    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end());
+    solver.RegisterPrimal();
 }

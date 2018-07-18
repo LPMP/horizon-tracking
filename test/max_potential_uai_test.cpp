@@ -39,5 +39,18 @@ int main()
         test(std::abs(solver.lower_bound() - 4.307381) <= eps);
         solver.GetLP().write_back_reparametrization();
         test(std::abs(solver.GetLP().original_factors_lower_bound() - 4.307381) <= eps);
+        auto numF = solver.GetLP().GetNumberOfFactors();
+        std::vector<FactorTypeAdapter*> factors;
+        for (auto i = 0; i < numF; i++)
+        {
+            auto currentF = solver.GetLP().GetFactor(i);
+            if (dynamic_cast<FMC_HORIZON_TRACKING::UnaryFactor*>(currentF) || 
+                dynamic_cast<FMC_HORIZON_TRACKING::PairwiseFactor*>(currentF))
+                factors.push_back(currentF);
+        }
+        test(solver.primal_cost() == std::numeric_limits<REAL>::infinity());
+        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end());
+        solver.RegisterPrimal();
+        test(solver.primal_cost() < std::numeric_limits<REAL>::max());
     }
 }
