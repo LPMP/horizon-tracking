@@ -51,17 +51,17 @@ MAX-POTENTIALS
 0.000000 0.000000 
 
 4
-0.000000 0.000000 0.000000 0.000000 
+5.000000 20.000000 2.000000 20.000000 
 
 4
-0.000000 0.000000 0.000000 0.000000 
+30.000000 33.000000 3.000000 50.000000 
 )";
 
 std::vector<std::string> solver_options = {
    {"chain 1x3 test"},
    {"--maxIter"}, {"500"},
    {"--timeout"}, {"10"}, // one minute
-   {"-v"}, {"0"},
+   {"-v"}, {"2"},
    {"--inputFile"}, chain_uai_input
 };
 
@@ -601,7 +601,7 @@ std::vector<std::string> solver_options_2 = {
    {"max potential 5x5 grid test"},
    {"--maxIter"}, {"500"},
    {"--timeout"}, {"30"}, // one minute
-   {"-v"}, {"0"},
+   {"-v"}, {"2"},
    {"--inputFile"}, grid_uai_input
 };
 }

@@ -1560,6 +1560,8 @@ REAL max_potential_on_tree::MaxPotentialLowerBoundForAllTrees = std::numeric_lim
 
 class unary_max_potential_on_chain_message {
     public:
+        // UNUSED CLASS:
+        unary_max_potential_on_chain_message(const std::size_t nodeIndex) : variable(nodeIndex) {}
         template<typename FACTOR, typename MSG>
         void RepamRight(FACTOR& r, const MSG& msgs)
         {
