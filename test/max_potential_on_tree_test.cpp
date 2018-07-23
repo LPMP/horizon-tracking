@@ -36,7 +36,8 @@ int main()
         max_potential_on_tree tree = max_potential_on_tree(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule, numEdgesForNode);
         REAL lb = tree.GetMaxPotLowerBound();
         REAL ub = tree.GetMaxPotUpperBound();
-        std::vector<std::array<REAL, 2>> rootMarginals = tree.ComputeMarginalsForBothPotentials(lb, ub);
+        tree.MaximizePotentialAndComputePrimal();
+        std::vector<std::array<REAL, 3>> rootMarginals = tree.max_potential_marginals();
         REAL bestSumMarginal = INFINITY;
         for (const auto& currentM : rootMarginals)
         {
@@ -64,7 +65,8 @@ int main()
         max_potential_on_tree tree = max_potential_on_tree(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule, numEdgesForNode);
         REAL lb = tree.GetMaxPotLowerBound();
         REAL ub = tree.GetMaxPotUpperBound();
-        std::vector<std::array<REAL, 2>> rootMarginals = tree.ComputeMarginalsForBothPotentials(lb, ub);
+        tree.MaximizePotentialAndComputePrimal();
+        std::vector<std::array<REAL, 3>> rootMarginals = tree.max_potential_marginals();
         REAL bestSumMarginal = INFINITY;
         for (const auto& currentM : rootMarginals)
         {
@@ -80,7 +82,8 @@ int main()
         max_potential_on_tree tree = max_potential_on_tree(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule, numEdgesForNode);
         REAL lb = tree.GetMaxPotLowerBound();
         REAL ub = tree.GetMaxPotUpperBound();
-        std::vector<std::array<REAL, 2>> rootMarginals = tree.ComputeMarginalsForBothPotentials(lb, ub);
+        tree.MaximizePotentialAndComputePrimal();
+        std::vector<std::array<REAL, 3>> rootMarginals = tree.max_potential_marginals();
         REAL bestSumMarginal = INFINITY;
         for (const auto& currentM : rootMarginals)
         {
