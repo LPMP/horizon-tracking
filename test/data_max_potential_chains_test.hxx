@@ -225,7 +225,7 @@ MAX-POTENTIALS
 
 std::vector<std::string> solver_options_small = {
    {"chain 3x1 test"},
-   {"--maxIter"}, {"500"},
+   {"--maxIter"}, {"5"},
    {"--timeout"}, {"10"}, // one minute
    {"-v"}, {"2"},
    {"--inputFile"}, chain_uai_input_small
@@ -233,7 +233,7 @@ std::vector<std::string> solver_options_small = {
 
 std::vector<std::string> solver_options_medium = {
    {"chain 5x1 test"},
-   {"--maxIter"}, {"500"},
+   {"--maxIter"}, {"5"},
    {"--timeout"}, {"30"}, // one minute
    {"-v"}, {"2"},
    {"--inputFile"}, chain_uai_input_medium

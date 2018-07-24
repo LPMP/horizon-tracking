@@ -1616,7 +1616,7 @@ class unary_max_potential_on_chain_message {
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
         bool ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
         {
-            if(r.primal() < l.size()) {
+            if(r.primal()[variable] < l.size()) {
                 const bool changed = (l.primal() != r.solution[variable]);
                 r.solution[variable] = l.primal();
                 return changed;
@@ -1686,18 +1686,39 @@ class pairwise_max_factor_tree_message {
         }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
-        void ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
+        bool ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
         {
-            l.primal()[0] = r.solution(unary_1);
-            l.primal()[1] = r.solution(unary_2);
+            bool changed_unary_1 = false;
+            if(r.solution(unary_1) < l.dim1()) {
+                changed_unary_1 = (r.solution(unary_1) != l.primal()[0]);
+                l.primal()[0] = r.solution(unary_1);
+            }
+
+            bool changed_unary_2 = false;
+            if(r.solution(unary_2) < l.dim2()) {
+                changed_unary_2 = (r.solution(unary_2) != l.primal()[1]);
+                l.primal()[1] = r.solution(unary_2);
+            }
+
+            return changed_unary_1 || changed_unary_2;
         }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
-        void deactivated_ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
+        bool ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
         {
-            assert(false);
-            r.solution(unary_1) = l.primal()[0];
-            r.solution(unary_2) = l.primal()[1];
+            bool changed_unary_1 = false;
+            if(l.primal()[0] < l.dim1()) {
+                changed_unary_1 = (r.solution(unary_1) != l.primal()[0]);
+                r.solution(unary_1) = l.primal()[0];
+            }
+
+            bool changed_unary_2 = false;
+            if(l.primal()[1] < l.dim2()) {
+                changed_unary_2 = (r.solution(unary_2) != l.primal()[1]);
+                r.solution(unary_2) = l.primal()[1];
+            }
+
+            return changed_unary_1 || changed_unary_2;
         }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
@@ -1762,16 +1783,28 @@ class max_factor_tree_graph_message {
         }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
-        void ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
+        bool ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
         {
-            l.set_max_potential_index(r.max_potential_index(entry));
+            if(r.max_potential_index(entry) != std::numeric_limits<INDEX>::max()) {
+                const bool changed = (l.max_potential_index() != r.max_potential_index(entry));
+                l.set_max_potential_index(r.max_potential_index(entry));
+                return changed;
+            } else {
+                return false;
+            }
             // l.max_potential_index() = r.max_potential_index(entry);
         }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
-        void ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
+        bool ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
         {
-            r.max_potential_index(entry) = l.max_potential_index();
+            if(l.max_potential_index() != std::numeric_limits<INDEX>::max()) {
+                const bool changed = (r.max_potential_index(entry) != l.max_potential_index());
+                r.max_potential_index(entry) = l.max_potential_index();
+                return changed;
+            } else {
+                return false;
+            }
         }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>

@@ -28,10 +28,11 @@ int main()
                 factors.push_back(currentF);
         }
         test(solver.primal_cost() == std::numeric_limits<REAL>::infinity());
-        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end());
+        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end(), 1);
         solver.RegisterPrimal();
         test(std::abs(solver.primal_cost() - 49) <= eps);
     }
+
     // Test on 5 Node Chain:
     {
         using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
@@ -51,8 +52,11 @@ int main()
                 factors.push_back(currentF);
         }
         test(solver.primal_cost() == std::numeric_limits<REAL>::infinity());
-        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end());
+        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end(), 1);
         solver.RegisterPrimal();
+        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end(), 2);
+        solver.RegisterPrimal();
+        test(std::abs(solver.GetLP().original_factors_lower_bound() - 0.085579) <= eps);
         test(std::abs(solver.primal_cost() - 0.085579) <= eps);
     }
 }
