@@ -28,7 +28,9 @@ int main()
                 factors.push_back(currentF);
         }
         test(solver.primal_cost() == std::numeric_limits<REAL>::infinity());
-        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end());
+        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end(), 1);
+        solver.RegisterPrimal();
+        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end(), 2);
         solver.RegisterPrimal();
         test(solver.primal_cost() < std::numeric_limits<REAL>::max());
         test((solver.primal_cost() - 0.242203) <= eps);
@@ -52,7 +54,9 @@ int main()
                 factors.push_back(currentF);
         }
         test(solver.primal_cost() == std::numeric_limits<REAL>::infinity());
-        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end());
+        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end(), 1);
+        solver.RegisterPrimal();
+        solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end(), 2);
         solver.RegisterPrimal();
         test(solver.primal_cost() < std::numeric_limits<REAL>::max());
         test((solver.primal_cost() - 4.307381) <= eps);

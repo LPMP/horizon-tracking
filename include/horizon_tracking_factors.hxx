@@ -482,7 +482,8 @@ class ShortestPathTreeInChain {
 
             REAL EvaluatePrimal() const
             {
-                return solutionObjective;
+                assert(max_potential_index_ != std::numeric_limits<std::size_t>::max());
+                return max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
                 // return cost of current solution
             }
 
