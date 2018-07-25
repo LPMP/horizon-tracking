@@ -26,4 +26,5 @@ int main(int argc, char** argv)
     solver.RegisterPrimal();
     solver.WritePrimal();
     std::cout<<"\n Primal Cost: "<<solver.primal_cost();
+    std::cout<<"Percentage of primal cost to lower bound: "<<100.0 * solver.primal_cost() / solver.lower_bound() <<"%";
 }
