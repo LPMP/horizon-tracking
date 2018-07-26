@@ -111,8 +111,9 @@ namespace LP_MP {
 
             void Solve() const
             {
-                std::unordered_set<INDEX> coveredTables;
+                INDEX numCovered = 0;
                 INDEX numTables = marginals_collection_.size();
+                std::vector<bool> coveredTables(numTables, false);
                 REAL s = 0;
                 std::vector<REAL> l(numTables, INFINITY);
                 double bestObjective = INFINITY;
@@ -130,9 +131,10 @@ namespace LP_MP {
                     assert(currentMaxCost == marginals_collection_[currentTableIndex][currentLabelIndex][0]);
 
                     // If the edge is not yet covered:
-                    if (coveredTables.count(currentTableIndex) == 0)  
+                    if (!coveredTables[currentTableIndex])  
                     {
-                        coveredTables.insert(currentTableIndex);
+                        coveredTables[currentTableIndex] = true;
+                        numCovered++;
                         s += currentLinearCost;
                         l[currentTableIndex] = currentLinearCost;
                         lablesForTables[currentTableIndex] = currentLabelIndex;
@@ -150,7 +152,7 @@ namespace LP_MP {
                         lablesForTables[currentTableIndex] = currentLabelIndex;
                     }
 
-                    if (coveredTables.size() == numTables) 
+                    if (numCovered == numTables) 
                     {
                         // Build all the marginals even the ones which cannot be optimal, as they are used for downward messages:
                         graph_marginals[currentTableIndex].push_back({currentMaxCost, s});                  
