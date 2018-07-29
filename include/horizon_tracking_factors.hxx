@@ -694,7 +694,6 @@ class ShortestPathTreeInChain {
             void SolveByEdgeAddition() const
             {
                 REAL bestSolutionCost = INFINITY;
-                std::vector<INDEX> predecessors(NumNodes);    // For each node, store the label of the previous node
                 std::vector<std::vector<REAL> > distanceFromSource(NumNodes);
                 REAL initialValue = 0;
                 for (INDEX i = 0 ; i < NumNodes ; i++ )
@@ -709,7 +708,7 @@ class ShortestPathTreeInChain {
                 for(const auto& currentEdgeToInsert : MaxPotsSortingOrder)
                 {
                     REAL currentMaxPotValue = MaxPotentials1D[currentEdgeToInsert].value;
-                    bool foundPath = UpdateDistances(currentEdgeToInsert, distanceFromSource, predecessors, MaxPotentials1D[currentEdgeToInsert].value);
+                    bool foundPath = UpdateDistances(currentEdgeToInsert, distanceFromSource, MaxPotentials1D[currentEdgeToInsert].value);
 
                     REAL currentLinearCost =  distanceFromSource[NumNodes - 1][0]; 
 
@@ -724,7 +723,7 @@ class ShortestPathTreeInChain {
                 }
             }
 
-            bool UpdateDistances(INDEX edgeToUpdate, std::vector<std::vector<REAL> >& distanceFromSource, std::vector<INDEX>& predecessors, REAL maxPotThresh) const
+            bool UpdateDistances(INDEX edgeToUpdate, std::vector<std::vector<REAL> >& distanceFromSource, REAL maxPotThresh) const
             {
                 bool reachedTerminal = false;
                 std::queue<EdgePriority> queue;  //TODO: Priority queue probably does not offer any benefit for topological sort shortest path.
@@ -760,7 +759,6 @@ class ShortestPathTreeInChain {
                         continue;
 
                     distanceFromSource[n2][l2] = offeredDistanceTon2l2;
-                    predecessors[n2] = l1;
                     
                     if (n2 == NumNodes - 1)
                     {
