@@ -24,4 +24,8 @@ int main(int argc, char** argv)
     solver.RegisterPrimal();
     solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end(),std::numeric_limits<INDEX>::max()-1);
     solver.RegisterPrimal();
+    solver.WritePrimal();
+    std::cout<<"\n\n Primal Cost: "<<solver.primal_cost();
+    std::cout<<"\n Percentage duality gap: "<<100.0 * (solver.primal_cost() - solver.lower_bound()) / solver.lower_bound() <<"%\n\n";
 }
+ 
