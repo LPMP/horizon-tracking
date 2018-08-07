@@ -19,16 +19,16 @@ using mrf_constructor::mrf_constructor;
 template <typename ITERATOR, typename TENSORSIZE>
 max_chain_factor_container* add_max_chain(ITERATOR node_var_begin, ITERATOR node_var_end,
                                     TENSORSIZE potSizeBegin, TENSORSIZE potSizeEnd, 
-                                    const tensor3_variable<REAL>& maxPairwisePotentials,
+                                    const three_dimensional_variable_array<REAL>& maxPairwisePotentials,
                                     INDEX chainIndex,
                                     factor_tree<FMC>* t = nullptr)
 {
     std::vector<INDEX> numLabels;
     for(auto it = node_var_begin; it!=node_var_end; ++it) {
         const INDEX i = (*it);
-        numLabels.push_back( this->GetNumberOfLabels(i) );
+        numLabels.push_back( this->get_number_of_labels(i) );
     }
-    tensor3_variable<REAL> linearPairwisePotentials(potSizeBegin, potSizeEnd);
+    three_dimensional_variable_array<REAL> linearPairwisePotentials(potSizeBegin, potSizeEnd);
     for(std::size_t n1=0; n1<maxPairwisePotentials.dim1(); ++n1) {
         for(std::size_t l1=0; l1<maxPairwisePotentials.dim2(n1); ++l1) {
             for(std::size_t l2=0; l2<maxPairwisePotentials.dim3(n1); ++l2) {
@@ -44,7 +44,7 @@ max_chain_factor_container* add_max_chain(ITERATOR node_var_begin, ITERATOR node
     for(auto it = node_var_begin; std::next(it, 1)!=node_var_end; ++it, ++pairwise_index, ++node1_index, ++node2_index) {
         const INDEX i = (*it);
         const INDEX j = *std::next(it, 1);
-        auto* pairwise_factor = this->GetPairwiseFactor(i,j);
+        auto* pairwise_factor = this->get_pairwise_factor(i,j);
         auto* msg = this->lp_->template add_message<pairwise_max_factor_message_container>(pairwise_factor, chain_factor, pairwise_index, node1_index, node2_index);
 
         if(t != nullptr) {
@@ -92,8 +92,8 @@ using max_chain_factor_container = MAX_CHAIN_FACTOR;
 using max_potential_factor_container = MAX_POTENTIAL_FACTOR;
 using max_chain_max_potential_message_container = MAX_CHAIN_MAX_POTENTIAL_MESSAGE;
 
-max_chain_factor_container* add_max_chain(const tensor3_variable<REAL>& linearPairwisePotentials, 
-                                    const tensor3_variable<REAL>& maxPairwisePotentials,
+max_chain_factor_container* add_max_chain(const three_dimensional_variable_array<REAL>& linearPairwisePotentials, 
+                                    const three_dimensional_variable_array<REAL>& maxPairwisePotentials,
                                     const std::vector<INDEX>& numLabels,
                                     INDEX chainIndex,
                                     factor_tree<FMC>* t = nullptr)
@@ -168,8 +168,8 @@ template<typename SOLVER>
                 numLabels.push_back(l2Size);
         }
 
-        tensor3_variable<REAL> linearPairwisePotentials(functionTableSizes.begin(), functionTableSizes.end());
-        tensor3_variable<REAL> maxPairwisePotentials(functionTableSizes.begin(), functionTableSizes.end());
+        three_dimensional_variable_array<REAL> linearPairwisePotentials(functionTableSizes.begin(), functionTableSizes.end());
+        three_dimensional_variable_array<REAL> maxPairwisePotentials(functionTableSizes.begin(), functionTableSizes.end());
             
         // Populate potentials:
         for (INDEX currentPotentialsIndex = 0; currentPotentialsIndex < input.size(); currentPotentialsIndex++)
@@ -359,7 +359,7 @@ template<typename SOLVER>
                 functionTableSizes.push_back(std::vector<INDEX>{l1Size, l2Size});
             }
 
-            tensor3_variable<REAL> maxPairwisePotentials(functionTableSizes.begin(), functionTableSizes.end());
+            three_dimensional_variable_array<REAL> maxPairwisePotentials(functionTableSizes.begin(), functionTableSizes.end());
             
             // Populate max potentials:
             for (INDEX currentPotentialsIndex = 1; currentPotentialsIndex < input.size(); currentPotentialsIndex++) { 

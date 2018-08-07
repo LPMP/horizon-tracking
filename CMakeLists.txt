@@ -14,4 +14,5 @@ target_include_directories(LP_MP-horizon-tracking INTERFACE include)
 target_link_libraries(LP_MP-horizon-tracking INTERFACE LP_MP-MRF)
 
 add_subdirectory(src)
+enable_testing()
 add_subdirectory(test)

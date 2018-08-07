@@ -20,8 +20,8 @@ int main(int argc, char** argv)
             dynamic_cast<FMC_HORIZON_TRACKING::PairwiseFactor*>(currentF))
             factors.push_back(currentF);
     }
-    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end());
+    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end(),std::numeric_limits<INDEX>::max()-2);
     solver.RegisterPrimal();
-    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end());
+    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end(),std::numeric_limits<INDEX>::max()-1);
     solver.RegisterPrimal();
 }

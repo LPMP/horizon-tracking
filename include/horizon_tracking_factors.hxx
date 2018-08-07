@@ -5,6 +5,7 @@
 #include <queue>
 #include <limits>
 #include "two_dimensional_variable_array.hxx"
+#include "three_dimensional_variable_array.hxx"
 #include <unordered_set>
 #include <cmath>
 
@@ -442,8 +443,9 @@ class ShortestPathTreeInChain {
         };
         
         public:     
-            tensor3_variable<REAL> LinearPairwisePotentials;  
-            max_potential_on_chain(const tensor3_variable<REAL>& maxPairwisePotentials, const tensor3_variable<REAL>& linearPairwisePotentials, const std::vector<INDEX>& numLabels, INDEX chainIndex, bool useEdgeDeletion = false)
+            three_dimensional_variable_array<REAL> LinearPairwisePotentials;  
+
+            max_potential_on_chain(const three_dimensional_variable_array<REAL>& maxPairwisePotentials, const three_dimensional_variable_array<REAL>& linearPairwisePotentials, const std::vector<INDEX>& numLabels, INDEX chainIndex, bool useEdgeDeletion = false)
             :
                 LinearPairwisePotentials(linearPairwisePotentials),
                 MaxPairwisePotentials(maxPairwisePotentials),
@@ -598,7 +600,7 @@ class ShortestPathTreeInChain {
         private:
             mutable std::vector<MaxPairwisePotential> MaxPotentials1D;
             std::vector<INDEX> MaxPotsSortingOrder;
-            tensor3_variable<REAL> MaxPairwisePotentials;
+            three_dimensional_variable_array<REAL> MaxPairwisePotentials;
             mutable std::vector<std::array<REAL,3>> max_potential_marginals_; // (i) max potential, (ii) minimum linear potential, (iii) cost of configuration 
             mutable bool max_potential_marginals_valid_ = false;
             mutable bool MaxPotMarginalsInitialized = false;
@@ -1142,7 +1144,7 @@ class LabelStateSpace {
 
 class max_potential_on_tree {
     public:       
-        max_potential_on_tree(const tensor3_variable<REAL>& maxPairwisePotentials, const tensor3_variable<REAL>& linearPairwisePotentials,
+        max_potential_on_tree(const three_dimensional_variable_array<REAL>& maxPairwisePotentials, const three_dimensional_variable_array<REAL>& linearPairwisePotentials,
          const std::vector<INDEX>& numLabels, const std::vector<std::array<INDEX, 2>>& messagePassingSchedule, const std::vector<INDEX>& numEdgesForNode)
         :
             LinearPairwisePotentials(linearPairwisePotentials),
@@ -1223,8 +1225,8 @@ class max_potential_on_tree {
 
     private:
         mutable std::vector<INDEX> solution_;
-        tensor3_variable<REAL> MaxPairwisePotentials;
-        tensor3_variable<REAL> LinearPairwisePotentials;
+        three_dimensional_variable_array<REAL> MaxPairwisePotentials;
+        three_dimensional_variable_array<REAL> LinearPairwisePotentials;
         INDEX NumNodes;
         std::vector<INDEX> NumLabels;
         std::vector<INDEX> NumEdgesForNode;
@@ -1454,7 +1456,7 @@ class max_potential_on_tree {
             return bestMessageValue;
         }
 
-        std::array<REAL, 2> MessagePassingForOnePotential(const tensor3_variable<REAL>& mainPairwisePots, const tensor3_variable<REAL>& otherPairwisePots, bool doConventional) const
+        std::array<REAL, 2> MessagePassingForOnePotential(const three_dimensional_variable_array<REAL>& mainPairwisePots, const three_dimensional_variable_array<REAL>& otherPairwisePots, bool doConventional) const
         {
             std::vector<std::vector<REAL>> mainMessages(NumNodes);
             std::vector<std::vector<REAL>> otherMessages(NumNodes);
@@ -1514,7 +1516,7 @@ class max_potential_on_tree {
         }
 
         std::array<REAL, 2> ComputeMessageValuePair(const std::vector<REAL>& tailMainMessages, const std::vector<REAL>& tailOtherMessages, INDEX edgeIndex, INDEX lh, 
-        const tensor3_variable<REAL>& mainPairwisePots, const tensor3_variable<REAL>& otherPairwisePots, bool doConventional, bool isReverse) const
+        const three_dimensional_variable_array<REAL>& mainPairwisePots, const three_dimensional_variable_array<REAL>& otherPairwisePots, bool doConventional, bool isReverse) const
         {
             REAL bestMainMessage = INFINITY;
             REAL bestOtherMessage = INFINITY;

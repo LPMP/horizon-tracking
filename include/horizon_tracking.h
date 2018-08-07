@@ -31,8 +31,8 @@ struct FMC_HORIZON_TRACKING {
 
    using MessageList = meta::list< UnaryPairwiseMessageLeftContainer, UnaryPairwiseMessageRightContainer, pairwise_max_message_container, max_chain_to_max_potential_message_container >;
 
-   using mrf_constructor = StandardMrfConstructor<FMC_HORIZON_TRACKING,0,1,0,1>;
-   using constructor = max_chain_constructor<mrf_constructor, max_chain_container, max_potential_container, pairwise_max_message_container, max_chain_to_max_potential_message_container>;
+   using mrf_c = mrf_constructor<FMC_HORIZON_TRACKING,0,1,0,1>;
+   using constructor = max_chain_constructor<mrf_c, max_chain_container, max_potential_container, pairwise_max_message_container, max_chain_to_max_potential_message_container>;
    using ProblemDecompositionList = meta::list<constructor>;
 };
 

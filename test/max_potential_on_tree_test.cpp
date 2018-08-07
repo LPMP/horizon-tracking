@@ -10,8 +10,8 @@ int main()
     std::vector<INDEX> numLabels = {3, 2, 3};
     std::vector<std::array<INDEX,2>> potential_size{{3,2}, {2,3}};
 
-    tensor3_variable<REAL> LinearPairwisePotentials(potential_size.begin(), potential_size.end());
-    tensor3_variable<REAL> MaxPairwisePotentials(potential_size.begin(), potential_size.end());
+    three_dimensional_variable_array<REAL> LinearPairwisePotentials(potential_size.begin(), potential_size.end());
+    three_dimensional_variable_array<REAL> MaxPairwisePotentials(potential_size.begin(), potential_size.end());
     std::vector<std::array<INDEX, 2>> messagePassingSchedule;
     std::vector<INDEX> numEdgesForNode({1, 2, 1});
 
