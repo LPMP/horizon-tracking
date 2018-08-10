@@ -13,12 +13,86 @@
 namespace LP_MP {
 namespace UAIMaxPotInput {
    struct MaxPotInput {
-      INDEX number_of_variables_;
-      INDEX number_of_cliques_;
+      std::size_t number_of_variables_;
+      std::size_t number_of_cliques_;
       std::vector<INDEX> cardinality_;
       std::vector<std::vector<INDEX>> clique_scopes_;
       std::vector<std::vector<REAL>> function_tables_;
    };
+
+// For getting the traversal order of the nodes, in the order of increasing number of labels.
+class UaiFileGraph {
+    public:
+        UaiFileGraph(std::size_t numNodes) {
+            NumNodes = numNodes;
+            Nodes.resize(numNodes);
+            NodesCovered.resize(numNodes);
+        }
+
+        struct GraphNode {
+            std::size_t numLabels;
+            std::vector<std::size_t> neighbourIndices;
+        };
+
+        void AddNode(std::size_t index, std::size_t numLabels) {
+            Nodes[index].numLabels = numLabels;
+            NodesCovered[index] = false;
+            if (numLabels < minimumNumLabels)
+            {
+                minimumNumLabels = numLabels;
+                minLabelNodeIndex = index;
+            }
+        }
+
+        void AddEdge(std::size_t n1Index, std::size_t n2Index) {
+            Nodes[n1Index].neighbourIndices.push_back(n2Index);
+            Nodes[n2Index].neighbourIndices.push_back(n1Index);
+        }
+
+        struct Node {
+            std::size_t NodeIndex;
+            std::size_t NumLabels;
+        };
+
+        struct NodeCompare {
+            bool operator() (const Node& lhs, const Node& rhs) const
+            {
+                return lhs.NumLabels > rhs.NumLabels;
+            }
+        };
+
+        std::vector<std::size_t> getTraversalOrder() const {
+            std::vector<std::size_t> traversalOrder;
+            std::priority_queue<Node, std::vector<Node>, NodeCompare> nodeIndexAndNodeLabels;
+
+            nodeIndexAndNodeLabels.push({minLabelNodeIndex, minimumNumLabels});
+            NodesCovered[minLabelNodeIndex] = true;
+
+            while (!nodeIndexAndNodeLabels.empty()) {
+                auto currentBestNode = nodeIndexAndNodeLabels.top();
+                nodeIndexAndNodeLabels.pop();
+                traversalOrder.push_back(currentBestNode.NodeIndex);
+
+                for (const auto& currentNeighbourIndex : Nodes[currentBestNode.NodeIndex].neighbourIndices) {
+                    if (NodesCovered[currentNeighbourIndex])
+                        continue;
+                    
+                    nodeIndexAndNodeLabels.push({currentNeighbourIndex, Nodes[currentNeighbourIndex].numLabels});
+                    NodesCovered[currentNeighbourIndex] = true;
+                }
+            }
+            return traversalOrder;
+        }
+
+    private:
+
+    std::size_t NumNodes;
+    std::vector<GraphNode> Nodes;
+    mutable std::vector<bool> NodesCovered;
+    std::size_t minLabelNodeIndex;
+    std::size_t minimumNumLabels = std::numeric_limits<std::size_t>::max();
+};
+
 
    // import basic parsers
    using Parsing::opt_whitespace;
@@ -199,28 +273,56 @@ namespace UAIMaxPotInput {
             assert(input.clique_scopes_[i].size() < 3);
         }
 
+        UaiFileGraph traversalOrder = UaiFileGraph(input.number_of_variables_);
+        for (std::size_t i=0; i < input.number_of_variables_; ++i) {
+            const auto noLabels = input.cardinality_[i];
+            traversalOrder.AddNode(i, noLabels);
+        }
+        
+        for (std::size_t i=0; i<input.number_of_cliques_; ++i) {
+            if (input.clique_scopes_[i].size() == 2) 
+                traversalOrder.AddEdge(input.clique_scopes_[i][0], input.clique_scopes_[i][1]);
+        }
+
+        std::vector<std::size_t> order = traversalOrder.getTraversalOrder();
+        std::vector<std::size_t> origNodeTraversalPriority(input.number_of_variables_);
         // first input the unaries, as pairwise potentials need them to be able to link to them
         // add unary factors with cost zero for each variables. There are models where unaries are not explicitly added.
+        // std::size_t i = 0;
+        // for (const auto& currentNodeIndex : order)
+        // {
+        //     const INDEX noLabels = input.cardinality_[currentNodeIndex];
+        //     mrf.add_unary_factor_with_relation(std::vector<REAL>(noLabels,0.0)); 
+        //     originalNodeIndexTraversalPriority[currentNodeIndex] = i;
+        //     i++;
+        // }
+
+        INDEX p = 0;
         for(INDEX i=0; i<input.number_of_variables_; ++i) {
             const INDEX noLabels = input.cardinality_[i];
-            mrf.add_unary_factor(std::vector<REAL>(noLabels,0.0));
+            std::vector<REAL> pots(noLabels, 0.0);
+            mrf.add_unary_factor_without_relation(pots.begin(), pots.end());
+            origNodeTraversalPriority[order[i]] = i;
+            // mrf.add_unary_factor(pots.begin(), pots.end());
+        }
+
+        for (std::size_t i = 0; i < order.size() - 1; i++ ) {
+            mrf.add_unary_unary_relation(order[i], order[i + 1]);
         }
 
         REAL initial_lb = 0.0;
-        for(INDEX i=0; i<input.number_of_cliques_; ++i) {
-        if(input.clique_scopes_[i].size() == 1) {
-            const INDEX var = input.clique_scopes_[i][0];
-            //std::cout << "unary potential for variable " << var << ":\n";
-            auto* f = mrf.get_unary_factor(var);
-            assert(input.function_tables_[i].size() == input.cardinality_[var]);
-            initial_lb += *std::min_element(input.function_tables_[i].begin(), input.function_tables_[i].end());
-            for(INDEX x=0; x<input.function_tables_[i].size(); ++x) {
-                //std::cout << input.function_tables_[i][x] << " ";
-                assert( (*f->GetFactor())[x] == 0.0);
-                (*f->GetFactor())[x] = input.function_tables_[i][x];
+        for(INDEX i=0; i < input.number_of_cliques_; ++i) {
+            if (input.clique_scopes_[i].size() == 1) {
+                const INDEX var = input.clique_scopes_[i][0];
+                //std::cout << "unary potential for variable " << var << ":\n";
+                auto* f = mrf.get_unary_factor(var);
+                assert(input.function_tables_[i].size() == input.cardinality_[var]);
+                initial_lb += *std::min_element(input.function_tables_[i].begin(), input.function_tables_[i].end());
+                for(INDEX x=0; x<input.function_tables_[i].size(); ++x) {
+                    assert( (*f->GetFactor())[x] == 0.0);
+                    (*f->GetFactor())[x] = input.function_tables_[i][x];
+                }
             }
-            //std::cout << "\n";
-        }
         }
 
         //std::cout << "initial lower bound unaries = " << initial_lb << "\n"; 
@@ -230,6 +332,7 @@ namespace UAIMaxPotInput {
         if(input.clique_scopes_[i].size() == 2) {
             const INDEX var1 = input.clique_scopes_[i][0];
             const INDEX var2 = input.clique_scopes_[i][1];
+
             const INDEX dim1 = mrf.get_number_of_labels(var1);
             const INDEX dim2 = mrf.get_number_of_labels(var2);
             assert(var1<var2 && var2 < input.number_of_variables_);
@@ -246,7 +349,11 @@ namespace UAIMaxPotInput {
             //   std::cout << "\n";
             }
             //std::cout << pairwise_cost;
-            mrf.add_pairwise_factor(var1,var2,pairwise_cost); // or do we have to transpose the values?
+            mrf.add_pairwise_factor_without_relation(var1, var2, pairwise_cost);
+            if (origNodeTraversalPriority[var1] < origNodeTraversalPriority[var2])
+                mrf.add_unary_pairwise_relation(var1, var2);
+            else
+                mrf.add_unary_pairwise_relation(var2, var1);
         }
         }
 
