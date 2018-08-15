@@ -24,8 +24,10 @@ namespace LP_MP {
             max_potential_on_graph(const std::vector<std::vector<std::array<REAL,2>>>& marginals_collection)
             : marginals_collection_(marginals_collection)
             {
+                graph_marginals_.resize(marginals_collection_.size());
                 for(std::size_t currentTableIndex = 0; currentTableIndex < marginals_collection_.size(); ++currentTableIndex)
                  {
+                    graph_marginals_[currentTableIndex].resize(marginals_collection_[currentTableIndex].size(), std::numeric_limits<REAL>::max());
                     for(std::size_t currentLabel = 0; currentLabel < marginals_collection_[currentTableIndex].size(); ++currentLabel )
                     {
                         MaxPotentials.push_back( { marginals_collection_[currentTableIndex][currentLabel][0], currentTableIndex, currentLabel } );
@@ -92,18 +94,23 @@ namespace LP_MP {
             {
                 return marginals_collection_; 
             }
+
             std::vector<std::vector<std::array<REAL,2>>> marginals_collection() const 
             {
                 return marginals_collection_; 
             }
 
+            std::vector<REAL> graph_marginals(std::size_t tableIndex) const 
+            {
+                return graph_marginals_[tableIndex]; 
+            }
+
         private:
             std::vector<std::vector<std::array<REAL,2>>> marginals_collection_;
 
-            // For primal recovery: Compute slack and send message to chains. Contains: max pot value, linear pot value, chain index which can receive message (TODO: Can it be more than one?)
+            // For primal recovery: Compute slack and send message to chains. Contains: max pot value + linear pot value, chain index which can receive message (TODO: Can it be more than one?)
             // TODO: Not needed during optimization only required for the last pass.
-            mutable std::vector<std::vector<std::array<REAL,2>>> graph_marginals; // same layout as marginals_collection_ but contains the sum of linear pots overall all tables (chains).
-
+            mutable std::vector<std::vector<REAL>> graph_marginals_; // same layout as marginals_collection_ but contains the sum of linear pots overall all tables (chains).
             std::vector<MaxPotentialElement> MaxPotentials;
             mutable std::vector<INDEX> max_potential_index_;
             mutable REAL solutionObjective;
@@ -120,8 +127,6 @@ namespace LP_MP {
                 double bestObjective = INFINITY;
                 std::vector<INDEX> bestLabelsForTables(numTables);
                 std::vector<INDEX> lablesForTables(numTables);
-                graph_marginals.clear();
-                graph_marginals.resize(numTables);
 
                 for(const auto& currentElementToInsert : SortingOrder)
                 {
@@ -156,18 +161,19 @@ namespace LP_MP {
                     if (numCovered == numTables) 
                     {
                         // Build all the marginals even the ones which cannot be optimal, as they are used for downward messages:
-                        graph_marginals[currentTableIndex].push_back({currentMaxCost, s});                  
+                        // TODO: Only need this for primal recovery
+                        graph_marginals_[currentTableIndex][currentLabelIndex] = currentMaxCost + s;                  
 
                         // Found another solution which is better than the previous one, in which case mark current solution as the best so far.
                         if (bestObjective > s + currentMaxCost)
                         {
                             bestObjective = s + currentMaxCost;
-                            solutionObjective = s + currentMaxCost;
                             bestLabelsForTables = lablesForTables;
                         }
                     }
                 }
 
+                solutionObjective = bestObjective;
                 max_potential_index_ = bestLabelsForTables; //TODO: The previous values for this solution will be lost! Do we need them?
                 primal_computed = true;
             }
@@ -458,16 +464,18 @@ class ShortestPathTreeInChain {
             {
                 assert(maxPairwisePotentials.dim1() + 1 == numLabels.size()); 
                 assert(maxPairwisePotentials.dim1() == linearPairwisePotentials.dim1());
-
+                std::vector<std::array<std::size_t,2>> pots_size;
+                pots_size.reserve(maxPairwisePotentials.dim1());
                 for(std::size_t n1=0; n1<maxPairwisePotentials.dim1(); ++n1) {
                     assert(maxPairwisePotentials.dim2(n1) == linearPairwisePotentials.dim2(n1) && maxPairwisePotentials.dim3(n1) == linearPairwisePotentials.dim3(n1));
+                    pots_size.push_back({maxPairwisePotentials.dim2(n1), maxPairwisePotentials.dim3(n1)});
                     for(std::size_t i=0; i<maxPairwisePotentials.dim2(n1); ++i) {
                         for(std::size_t j=0; j<maxPairwisePotentials.dim3(n1); ++j) {
                             MaxPotentials1D.push_back( {maxPairwisePotentials(n1,i,j), n1, n1+1, i, j} );
                         }
                     }
                 }
-
+                edge_marginals_.resize(pots_size.begin(), pots_size.end(), std::numeric_limits<REAL>::max());
                 MaxPotsSortingOrder = GetPairwisePotsSortingOrder(MaxPotentials1D);
                 solution_.assign(NumNodes, 0);
                 init_primal();
@@ -593,6 +601,11 @@ class ShortestPathTreeInChain {
             {
                 return max_potential_marginals_;
             }
+            
+            three_dimensional_variable_array<REAL> edge_marginals() const
+            {
+                return edge_marginals_;
+            }
 
         protected:
                 std::vector<INDEX> NumLabels;
@@ -605,6 +618,7 @@ class ShortestPathTreeInChain {
             std::vector<INDEX> MaxPotsSortingOrder;
             three_dimensional_variable_array<REAL> MaxPairwisePotentials;
             mutable std::vector<std::array<REAL,3>> max_potential_marginals_; // (i) max potential, (ii) minimum linear potential, (iii) cost of configuration 
+            mutable three_dimensional_variable_array<REAL> edge_marginals_; // (i) Stores the cost of those shortest paths in which the corresponding edge was added last
             mutable bool max_potential_marginals_valid_ = false;
             mutable bool MaxPotMarginalsInitialized = false;
             INDEX ChainIndex;
@@ -719,7 +733,10 @@ class ShortestPathTreeInChain {
 
                     // Insert the marginal, and do not increment the index if the max pot was already present
                     // at previous index in which case the marginal was not inserted and we only took min:
-                    if (InsertMarginal<true>(MaxPotentials1D[currentEdgeToInsert].value, currentMaxPotIndex, currentLinearCost))
+                    const auto& n1 = MaxPotentials1D[currentEdgeToInsert].n1;
+                    const auto& l1 = MaxPotentials1D[currentEdgeToInsert].l1;
+                    const auto& l2 = MaxPotentials1D[currentEdgeToInsert].l2;
+                    if (InsertMarginal<true>(MaxPotentials1D[currentEdgeToInsert].value, currentMaxPotIndex, currentLinearCost, n1, l1, l2))
                         currentMaxPotIndex++;
                 }
             }
@@ -778,40 +795,44 @@ class ShortestPathTreeInChain {
             }
 
             template <bool insertEnd>
-            bool InsertMarginal(REAL maxPotValue, INDEX insertionIndex, REAL currentLinearCost) const
+            bool InsertMarginal(REAL maxPotValue, INDEX insertionIndex, REAL currentLinearCost, INDEX n1, INDEX l1, INDEX l2) const
             {
-                if (!MaxPotMarginalsInitialized)
-                {
-                    if(insertEnd)
-                    {
-                        if(max_potential_marginals_.size() > 0 && max_potential_marginals_.back()[0] == maxPotValue)
+                if (!MaxPotMarginalsInitialized) {
+                    if(insertEnd) {
+                        if(max_potential_marginals_.size() > 0 && max_potential_marginals_.back()[0] == maxPotValue) {
                             max_potential_marginals_.back()[1] = std::min(max_potential_marginals_.back()[1], currentLinearCost);
-                        else
+                            edge_marginals_(n1, l1, l2) = max_potential_marginals_.back()[1];
+                        } else { 
                             max_potential_marginals_.push_back({maxPotValue, currentLinearCost, 0});
+                            edge_marginals_(n1, l1, l2) =  currentLinearCost;
+                        }
                     }
-                    else
-                    {
-                        if(max_potential_marginals_.size() > 0 && max_potential_marginals_.front()[0] == maxPotValue)
+                    else {
+                        if(max_potential_marginals_.size() > 0 && max_potential_marginals_.front()[0] == maxPotValue) {
                             max_potential_marginals_.front()[1] = std::min(max_potential_marginals_.front()[1], currentLinearCost);
-                        else
+                            edge_marginals_(n1, l1, l2) =  max_potential_marginals_.front()[1];
+                        }
+                        else {
                             max_potential_marginals_.insert(max_potential_marginals_.begin(), {maxPotValue, currentLinearCost, 0});
+                            edge_marginals_(n1, l1, l2) = currentLinearCost;
+                        }
                     }
                 }
-                else
-                {                       
+                else {                       
                     // Check if the current max potential value is also present in the marginals (can only be present at adjacent index as they are sorted),
                     // if yes just take the minimum of the linear costs.
                     INDEX adjacentIndex = insertionIndex + (insertEnd ? -1:1);
                     if (adjacentIndex >= 0 && adjacentIndex <= max_potential_marginals_.size() - 1 &&
-                         max_potential_marginals_[adjacentIndex][0] == maxPotValue)
-                    {
-                        max_potential_marginals_[adjacentIndex][1] = std::min(max_potential_marginals_[adjacentIndex][1], currentLinearCost);
-                        return false;
+                        max_potential_marginals_[adjacentIndex][0] == maxPotValue) {
+                            max_potential_marginals_[adjacentIndex][1] = std::min(max_potential_marginals_[adjacentIndex][1], currentLinearCost);
+                            edge_marginals_(n1, l1, l2) = max_potential_marginals_[adjacentIndex][1] + max_potential_marginals_[adjacentIndex][2];
+                            return false;
                     }
                     
-                    assert(maxPotValue == max_potential_marginals_[insertionIndex][0]);
-                    
+                    assert(maxPotValue == max_potential_marginals_[insertionIndex][0]);                   
                     max_potential_marginals_[insertionIndex][1] = currentLinearCost;
+                    edge_marginals_(n1, l1, l2) = currentLinearCost + max_potential_marginals_[insertionIndex][2];
+
                     return true;
                 }
             }
@@ -880,7 +901,10 @@ class ShortestPathTreeInChain {
                 REAL treeMaxPotValue = spTree.GetMaxPotValueInTree().maxPotValue;
                 INDEX currentMaxPotIndex = max_potential_marginals_.size() - 1;
 
-                if (InsertMarginal<false>(treeMaxPotValue, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0)))
+                const auto& n1 = MaxPotentials1D[currentMaxPotIndex].n1;
+                const auto& l1 = MaxPotentials1D[currentMaxPotIndex].l1;
+                const auto& l2 = MaxPotentials1D[currentMaxPotIndex].l2;
+                if (InsertMarginal<false>(treeMaxPotValue, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0), n1, l1, l2))
                     currentMaxPotIndex--;
 
                 for (int i = MaxPotsSortingOrder.size() - 1; i >= 0; i--)
@@ -892,7 +916,10 @@ class ShortestPathTreeInChain {
 
                     if (!wasTreeEdge)
                     {
-                        if (InsertMarginal<false>(currentMaxPotEdge.value, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0)))
+                        const auto& n1 = MaxPotentials1D[currentMaxPotIndex].n1;
+                        const auto& l1 = MaxPotentials1D[currentMaxPotIndex].l1;
+                        const auto& l2 = MaxPotentials1D[currentMaxPotIndex].l2;
+                        if (InsertMarginal<false>(currentMaxPotEdge.value, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0), n1, l1, l2))
                             currentMaxPotIndex--;
                     }
                     else
@@ -989,7 +1016,10 @@ class ShortestPathTreeInChain {
                         if (!spTree.CheckPathToTerminal())
                             return;
 
-                        if (InsertMarginal<false>(spTree.GetMaxPotValueInTree().maxPotValue, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0)))
+                        const auto& n1 = MaxPotentials1D[currentMaxPotIndex].n1;
+                        const auto& l1 = MaxPotentials1D[currentMaxPotIndex].l1;
+                        const auto& l2 = MaxPotentials1D[currentMaxPotIndex].l2;
+                        if (InsertMarginal<false>(spTree.GetMaxPotValueInTree().maxPotValue, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0), n1, l1, l2))
                             currentMaxPotIndex--;                      
                     }
                 }
@@ -1670,7 +1700,18 @@ class pairwise_max_factor_tree_message {
         template<typename RIGHT_FACTOR, typename MSG>
         void send_message_to_left(const RIGHT_FACTOR& r, MSG& msg, const REAL omega = 1.0)
         {
-            assert(false);
+            const auto& edge_marginals = r.edge_marginals();
+            vector<REAL> m(edge_marginals.dim2(pairwise_entry) * edge_marginals.dim3(pairwise_entry));
+            INDEX c=0;
+            for(INDEX l1=0; l1<edge_marginals.dim2(pairwise_entry); ++l1) {
+                for(INDEX l2=0; l2<edge_marginals.dim2(pairwise_entry); ++l2) {
+                    m[c++] = edge_marginals(pairwise_entry, l1, l2);
+                }
+            }
+            const auto min = m.min();
+            assert(std::abs(r.LowerBound() - min) <= eps); // there should be an edge which is part of the path of the lowerbound.
+            for(auto& x : m) { x-= min; }
+            msg -= omega * m; // TODO: Verify this
         }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
@@ -1767,7 +1808,15 @@ class max_factor_tree_graph_message {
         template<typename RIGHT_FACTOR, typename MSG>
         void send_message_to_left(const RIGHT_FACTOR& r, MSG& msg, const REAL omega = 1.0)
         {
-            assert(false);
+            //CAUTION: m can contain very large values i.e. atmost max of REAL
+            vector<REAL> m(r.graph_marginals(entry).size());
+            for(std::size_t i=0; i<m.size(); ++i) {
+                m[i] = r.graph_marginals(entry)[i];
+            }
+            const auto min = m.min();
+            assert(std::abs(r.LowerBound() - min) <= eps); // There should be a chain label which is part of the cover which gives lower bound 
+            for(auto& x : m) { x-= min; }
+            msg -= omega*m; // TODO: Verify this
         }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
