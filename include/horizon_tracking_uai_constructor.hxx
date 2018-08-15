@@ -301,13 +301,15 @@ class UaiFileGraph {
         for(INDEX i=0; i<input.number_of_variables_; ++i) {
             const INDEX noLabels = input.cardinality_[i];
             std::vector<REAL> pots(noLabels, 0.0);
-            mrf.add_unary_factor_without_relation(pots.begin(), pots.end());
+            mrf.add_unary_factor(pots.begin(), pots.end());
             origNodeTraversalPriority[order[i]] = i;
             // mrf.add_unary_factor(pots.begin(), pots.end());
         }
 
         for (std::size_t i = 0; i < order.size() - 1; i++ ) {
-            mrf.add_unary_unary_relation(order[i], order[i + 1]);
+            auto* f1 = mrf.get_unary_factor(order[i]);
+            auto* f2 = mrf.get_unary_factor(order[i+1]);
+            mrf.get_lp()->AddFactorRelation(f1,f2);
         }
 
         REAL initial_lb = 0.0;
@@ -349,11 +351,16 @@ class UaiFileGraph {
             //   std::cout << "\n";
             }
             //std::cout << pairwise_cost;
-            mrf.add_pairwise_factor_without_relation(var1, var2, pairwise_cost);
-            if (origNodeTraversalPriority[var1] < origNodeTraversalPriority[var2])
-                mrf.add_unary_pairwise_relation(var1, var2);
-            else
-                mrf.add_unary_pairwise_relation(var2, var1);
+            auto* p = mrf.add_pairwise_factor(var1, var2, pairwise_cost);
+            auto f1 = mrf.get_unary_factor(var1);
+            auto f2 = mrf.get_unary_factor(var2);
+            if (origNodeTraversalPriority[var1] < origNodeTraversalPriority[var2]) {
+                mrf.get_lp()->AddFactorRelation(f1, p);
+                mrf.get_lp()->AddFactorRelation(p, f2);
+            } else {
+                mrf.get_lp()->AddFactorRelation(f2, p);
+                mrf.get_lp()->AddFactorRelation(p, f1);
+            }
         }
         }
 

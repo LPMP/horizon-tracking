@@ -211,7 +211,7 @@ class ShortestPathTreeInChain {
 
         struct SpTreeEdgeCompByn1
         {
-            bool operator()(const SpTreeEdge& lhs, const SpTreeEdge& rhs)
+            bool operator()(const SpTreeEdge& lhs, const SpTreeEdge& rhs) const
             {
                 return lhs.n1 < rhs.n1;
             }
@@ -219,7 +219,7 @@ class ShortestPathTreeInChain {
 
         struct SpTreeEdgeCompByMaxPot
         {
-            bool operator()(const SpTreeEdge& lhs, const SpTreeEdge& rhs)
+            bool operator()(const SpTreeEdge& lhs, const SpTreeEdge& rhs) const
             {
                 return lhs.maxPotValue > rhs.maxPotValue;
             }
@@ -307,7 +307,7 @@ class ShortestPathTreeInChain {
             return ChainNodes[n][l].distance;
         }
 
-        REAL IncreaseDistance(INDEX n, INDEX l, REAL value)
+        void IncreaseDistance(INDEX n, INDEX l, REAL value)
         {
             ChainNodes[n][l].distance += value;
         }

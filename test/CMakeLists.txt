@@ -7,9 +7,9 @@ target_link_libraries(max_potential_on_tree_test LP_MP-horizon-tracking DD_ILP l
 add_test(max_potential_on_tree_test  max_potential_on_tree_test)
 
 add_executable(max_potential_uai_chain_test max_potential_uai_chain_test.cpp)
-target_link_libraries(max_potential_uai_chain_test LP_MP-horizon-tracking DD_ILP FW-MAP arboricity lingeling m stdc++ pthread  )
+target_link_libraries(max_potential_uai_chain_test LP_MP-horizon-tracking DD_ILP FW-MAP arboricity lingeling m stdc++ pthread horizon_tracking_uai_input)
 add_test(max_potential_uai_chain_test max_potential_uai_chain_test)
 
 add_executable(max_potential_uai_grid_test max_potential_uai_grid_test.cpp)
-target_link_libraries(max_potential_uai_grid_test LP_MP-horizon-tracking DD_ILP FW-MAP arboricity lingeling m stdc++ pthread  )
+target_link_libraries(max_potential_uai_grid_test LP_MP-horizon-tracking DD_ILP FW-MAP arboricity lingeling m stdc++ pthread horizon_tracking_uai_input)
 add_test(max_potential_uai_grid_test max_potential_uai_grid_test)
