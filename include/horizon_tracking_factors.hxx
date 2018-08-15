@@ -50,8 +50,14 @@ namespace LP_MP {
 
             REAL EvaluatePrimal() const
             {
-                return solutionObjective;
                 // return cost of current solution
+                REAL cost = 0;
+                for(std::size_t currentTableIndex = 0; currentTableIndex < marginals_collection_.size(); ++currentTableIndex)
+                {
+                    cost += marginals_collection_[currentTableIndex][max_potential_index_[currentTableIndex]][0] + 
+                            marginals_collection_[currentTableIndex][max_potential_index_[currentTableIndex]][1];
+                }
+                return cost;
             }
  
             void MaximizePotentialAndComputePrimal() 
