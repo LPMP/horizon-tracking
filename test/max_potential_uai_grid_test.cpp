@@ -13,7 +13,9 @@ int main()
     {
         using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
         solver_type solver(solver_options_small);
-        UAIMaxPotInput::ParseProblemStringGridAndDecomposeToChains<solver_type>(grid_uai_input_small, solver);
+        auto input = horizon_tracking_uai_input::parse_string(grid_uai_input_small);
+        construct_horizon_tracking_problem_on_grid(input, solver, solver.template GetProblemConstructor<0>());
+        order_nodes_by_label_space_cadinality(solver.template GetProblemConstructor<0>());
         solver.Solve();
         test(std::abs(solver.lower_bound() -  0.242203) <= eps);
         solver.GetLP().write_back_reparametrization();
@@ -40,7 +42,9 @@ int main()
     {
         using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
         solver_type solver(solver_options_small);
-        UAIMaxPotInput::ParseProblemStringGridAndDecomposeToChains<solver_type>(grid_uai_input_3x3, solver);
+        auto input = horizon_tracking_uai_input::parse_string(grid_uai_input_3x3);
+        construct_horizon_tracking_problem_on_grid(input, solver, solver.template GetProblemConstructor<0>());
+        order_nodes_by_label_space_cadinality(solver.template GetProblemConstructor<0>());
         solver.Solve();
         test(std::abs(solver.lower_bound() -  0.590735) <= eps);
         solver.GetLP().write_back_reparametrization();
@@ -67,7 +71,9 @@ int main()
     {
         using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
         solver_type solver(solver_options_medium);
-        UAIMaxPotInput::ParseProblemStringGridAndDecomposeToChains<solver_type>(grid_uai_input_medium, solver);
+        auto input = horizon_tracking_uai_input::parse_string(grid_uai_input_medium);
+        construct_horizon_tracking_problem_on_grid(input, solver, solver.template GetProblemConstructor<0>());
+        order_nodes_by_label_space_cadinality(solver.template GetProblemConstructor<0>());
         solver.Solve();
         test(std::abs(solver.lower_bound() - 4.307381) <= eps);
         solver.GetLP().write_back_reparametrization();

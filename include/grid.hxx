@@ -29,15 +29,15 @@ namespace LP_MP {
             } else if(node_2 == node_1 + 1) {
                 const auto coord_1 = node_to_grid(node_1);
                 const auto coord_2 = node_to_grid(node_2);
-                assert(coord_1[0] == coord_2[0] + 1);
-                assert(coord_2[1] == coord_1[1]);
-                return {coord_1[1], coord_1[0]};
+                assert(coord_2[1] == coord_1[1] + 1);
+                assert(coord_2[0] == coord_1[0]);
+                return {coord_1[0], coord_1[1]};
             } else if(node_2 == node_1 + size_x) {
                 const auto coord_1 = node_to_grid(node_1);
                 const auto coord_2 = node_to_grid(node_2);
-                assert(coord_2[1] == coord_1[1] + 1);
-                assert(coord_1[0] == coord_2[0]);
-                return {coord_1[0] + size_x, coord_1[1]}; 
+                assert(coord_2[0] == coord_1[0] + 1);
+                assert(coord_1[1] == coord_2[1]);
+                return {coord_1[1] + size_x, coord_1[0]}; 
             } else {
                 throw std::runtime_error("nodes must be neighboring in grid graph");
             }
