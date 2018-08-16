@@ -585,7 +585,7 @@ class ShortestPathTreeInChain {
             {
                 assert(i < solution_.size());
                 const bool labels_computed = *std::max_element(solution_.begin(), solution_.end()) < std::numeric_limits<std::size_t>::max();
-                assert(labels_computed);
+                // assert(labels_computed); //TODO: Turning off for primal propagation, this is being handled outside i.e.(<dim())
                 return solution_[i]; 
             }
 

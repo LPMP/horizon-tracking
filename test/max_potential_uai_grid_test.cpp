@@ -19,6 +19,17 @@ int main()
         solver.Solve();
         test(std::abs(solver.lower_bound() -  0.242203) <= eps);
         solver.GetLP().write_back_reparametrization();
+        // send messages from botleneck potentials down to mrf
+        auto chain_constructor = solver.template GetProblemConstructor<0>();
+        auto max_potential_factors = chain_constructor.max_graph_factors();
+        for(auto* f : max_potential_factors) {
+            f->send_messages_to_left<FMC_HORIZON_TRACKING::max_chain_to_max_potential_message_container>(1.0);
+        }
+
+        auto max_potential_on_chain_factors = chain_constructor.max_chain_factors();
+        for(auto* f : max_potential_on_chain_factors) {
+            f->send_messages_to_left<FMC_HORIZON_TRACKING::pairwise_max_message_container>(1.0);
+        }
         test(std::abs(solver.GetLP().original_factors_lower_bound() - 0.242203) <= eps);
         auto numF = solver.GetLP().GetNumberOfFactors();
         std::vector<FactorTypeAdapter*> factors;
@@ -48,6 +59,16 @@ int main()
         solver.Solve();
         test(std::abs(solver.lower_bound() -  0.590735) <= eps);
         solver.GetLP().write_back_reparametrization();
+        auto chain_constructor = solver.template GetProblemConstructor<0>();
+        auto max_potential_factors = chain_constructor.max_graph_factors();
+        for(auto* f : max_potential_factors) {
+            f->send_messages_to_left<FMC_HORIZON_TRACKING::max_chain_to_max_potential_message_container>(1.0);
+        }
+
+        auto max_potential_on_chain_factors = chain_constructor.max_chain_factors();
+        for(auto* f : max_potential_on_chain_factors) {
+            f->send_messages_to_left<FMC_HORIZON_TRACKING::pairwise_max_message_container>(1.0);
+        }
         test(std::abs(solver.GetLP().original_factors_lower_bound() - 0.590735) <= eps);
         auto numF = solver.GetLP().GetNumberOfFactors();
         std::vector<FactorTypeAdapter*> factors;
@@ -77,6 +98,16 @@ int main()
         solver.Solve();
         test(std::abs(solver.lower_bound() - 4.307381) <= eps);
         solver.GetLP().write_back_reparametrization();
+                auto chain_constructor = solver.template GetProblemConstructor<0>();
+        auto max_potential_factors = chain_constructor.max_graph_factors();
+        for(auto* f : max_potential_factors) {
+            f->send_messages_to_left<FMC_HORIZON_TRACKING::max_chain_to_max_potential_message_container>(1.0);
+        }
+
+        auto max_potential_on_chain_factors = chain_constructor.max_chain_factors();
+        for(auto* f : max_potential_on_chain_factors) {
+            f->send_messages_to_left<FMC_HORIZON_TRACKING::pairwise_max_message_container>(1.0);
+        }
         test(std::abs(solver.GetLP().original_factors_lower_bound() - 4.307381) <= eps);
         auto numF = solver.GetLP().GetNumberOfFactors();
         std::vector<FactorTypeAdapter*> factors;
