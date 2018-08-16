@@ -481,7 +481,14 @@ class ShortestPathTreeInChain {
                         }
                     }
                 }
-                edge_marginals_.resize(pots_size.begin(), pots_size.end(), std::numeric_limits<REAL>::max());
+                edge_marginals_.resize(pots_size.begin(), pots_size.end());
+                for(std::size_t n1 = 0; n1 < edge_marginals_.dim1(); n1++){
+                    for(std::size_t l1 = 0; l1 < edge_marginals_.dim2(n1); l1++) {
+                        for(std::size_t l2 = 0; l2 < edge_marginals_.dim3(n1); l2++) {
+                            edge_marginals_(n1, l1, l2) = std::numeric_limits<REAL>::max();
+                        }
+                    }
+                }
                 MaxPotsSortingOrder = GetPairwisePotsSortingOrder(MaxPotentials1D);
                 solution_.assign(NumNodes, 0);
                 init_primal();

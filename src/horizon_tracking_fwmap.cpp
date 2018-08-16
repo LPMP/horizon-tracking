@@ -14,6 +14,19 @@ int main(int argc, char** argv)
 
     solver.Solve();
     solver.GetLP().write_back_reparametrization();
+    
+    // send messages from botleneck potentials down to mrf
+    auto chain_constructor = solver.template GetProblemConstructor<0>();
+    auto max_potential_factors = chain_constructor.max_graph_factors();
+    // for(auto* f : max_potential_factors) {
+    //     f->send_messages_to_left<max_chain_to_max_potential_message_container>(1.0);
+    // }
+
+    auto max_potential_on_chain_factors = chain_constructor.max_chain_factors();
+    // for(auto* f : max_potential_on_chain_factors) {
+    //     f->send_messages_to_left<pairwise_max_message_container>(1.0);
+    // }
+
     // mark mrf factors
     auto numF = solver.GetLP().GetNumberOfFactors();
     std::vector<FactorTypeAdapter*> factors;
