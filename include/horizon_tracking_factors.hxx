@@ -676,6 +676,25 @@ class ShortestPathTreeInChain {
             {
                 return max_potential_marginals_;
             }
+
+            void ComputeMaxPotentialIndexFromSolution() const {
+                REAL maxPotValueInSolution = std::numeric_limits<REAL>::lowest();
+                for (INDEX n1 = 0; n1 < solution_.size() - 1; n1++) {
+                    if (solution_[n1] == std::numeric_limits<INDEX>::max() || 
+                        solution_[n1 + 1] == std::numeric_limits<INDEX>::max())
+                        return; // Solution not ready yet
+                    
+                    maxPotValueInSolution = fmax(maxPotValueInSolution, MaxPairwisePotentials(n1, solution_[n1], solution_[n1 + 1]));
+                }
+
+                for (INDEX mpIndex = 0; mpIndex < max_potential_marginals_.size(); mpIndex++) {
+                    if (maxPotValueInSolution == max_potential_marginals_[mpIndex][0]) {
+                        max_potential_index_ = mpIndex;
+                        return;
+                    }
+                }
+                assert(false); // should be able to find the max pot value of solution in marginals!
+            }
             
             // three_dimensional_variable_array<REAL> edge_marginals() const
             // {
@@ -1836,6 +1855,9 @@ class pairwise_max_factor_tree_message {
             return changed_unary_1 || changed_unary_2;
         }
 
+        // TODO: Should we update the max pot indices of chain based on the solution we just set 
+        // from MRF factors, so that when we propagate from chain to graph the indices correspond to
+        // the actual solution we got from unaries!
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
         bool ComputeRightFromLeftPrimal(const LEFT_FACTOR& l, RIGHT_FACTOR& r)
         {
@@ -1843,12 +1865,14 @@ class pairwise_max_factor_tree_message {
             if(l.primal()[0] < l.dim1()) {
                 changed_unary_1 = (r.solution(unary_1) != l.primal()[0]);
                 r.solution(unary_1) = l.primal()[0];
+                r.ComputeMaxPotentialIndexFromSolution();
             }
 
             bool changed_unary_2 = false;
             if(l.primal()[1] < l.dim2()) {
                 changed_unary_2 = (r.solution(unary_2) != l.primal()[1]);
                 r.solution(unary_2) = l.primal()[1];
+                r.ComputeMaxPotentialIndexFromSolution();
             }
 
             return changed_unary_1 || changed_unary_2;
