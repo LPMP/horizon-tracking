@@ -51,13 +51,14 @@ namespace LP_MP {
             REAL EvaluatePrimal() const
             {
                 // return cost of current solution
-                REAL cost = 0;
+                REAL linearCost = 0;
+                REAL maxCost = std::numeric_limits<REAL>::min();
                 for(std::size_t currentTableIndex = 0; currentTableIndex < marginals_collection_.size(); ++currentTableIndex)
                 {
-                    cost += marginals_collection_[currentTableIndex][max_potential_index_[currentTableIndex]][0] + 
-                            marginals_collection_[currentTableIndex][max_potential_index_[currentTableIndex]][1];
+                    maxCost = fmax(maxCost, marginals_collection_[currentTableIndex][max_potential_index_[currentTableIndex]][0]);
+                    linearCost += marginals_collection_[currentTableIndex][max_potential_index_[currentTableIndex]][1];
                 }
-                return cost;
+                return maxCost + linearCost;
             }
  
             void MaximizePotentialAndComputePrimal() 
