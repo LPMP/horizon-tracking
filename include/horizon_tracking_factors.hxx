@@ -463,11 +463,11 @@ class ShortestPathTreeInChain {
 
         bool CheckPathToTerminal()
         {
-            std::queue<std::array<REAL, 2>> q;
+            std::queue<std::array<INDEX, 2>> q;
             q.push({ChainNodes.size() - 1, 0});
             while (q.size() > 0)
             {   
-                std::array<REAL, 2> e = q.front();
+                std::array<INDEX, 2> e = q.front();
                 q.pop();
 
                 if (e[0] == 0)
@@ -576,7 +576,7 @@ class ShortestPathTreeInChain {
                 return solutionObjective;
             }
 
-            void MaximizePotentialAndComputePrimal() 
+            void MaximizePotentialAndComputePrimal()
             {
                 const bool labels_computed = *std::max_element(solution_.begin(), solution_.end()) < std::numeric_limits<INDEX>::max();
                 const bool max_potential_index_computed = max_potential_index_ != std::numeric_limits<std::size_t>::max();
