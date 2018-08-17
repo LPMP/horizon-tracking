@@ -677,10 +677,10 @@ class ShortestPathTreeInChain {
                 return max_potential_marginals_;
             }
             
-            three_dimensional_variable_array<REAL> edge_marginals() const
-            {
-                return ComputeMessagesToPairwise();
-            }
+            // three_dimensional_variable_array<REAL> edge_marginals() const
+            // {
+            //     return ComputeMessagesToPairwise();
+            // }
 
         protected:
                 std::vector<INDEX> NumLabels;
@@ -903,46 +903,46 @@ class ShortestPathTreeInChain {
             }
 
             // For primal propagation back to pairwise potentials.
-            three_dimensional_variable_array<REAL> ComputeMessagesToPairwise() const
-            {
-                std::vector<INDEX> idx(max_potential_marginals_.size());
-                three_dimensional_variable_array<uint8_t> edgesLocked;
-                auto potsDimensions = LinearPairwisePotentials.dimensions();
-                edgesLocked.resize(potsDimensions.begin(), potsDimensions.end(), 0);
-                three_dimensional_variable_array<REAL> edge_marginals;
-                edge_marginals.resize(potsDimensions.begin(), potsDimensions.end(), 0);
-                std::iota(idx.begin(), idx.end(), 0);
-                std::sort(idx.begin(), idx.end(), [&marginals = this->max_potential_marginals_](INDEX i1, INDEX i2) {
-                    return marginals[i1][0] + marginals[i1][1] + marginals[i1][2] < marginals[i2][0] + marginals[i2][1] + marginals[i2][2];
-                });
+            // three_dimensional_variable_array<REAL> ComputeMessagesToPairwise() const
+            // {
+            //     std::vector<INDEX> idx(max_potential_marginals_.size());
+            //     three_dimensional_variable_array<uint8_t> edgesLocked;
+            //     auto potsDimensions = LinearPairwisePotentials.dimensions();
+            //     edgesLocked.resize(potsDimensions.begin(), potsDimensions.end(), 0);
+            //     three_dimensional_variable_array<REAL> edge_marginals;
+            //     edge_marginals.resize(potsDimensions.begin(), potsDimensions.end(), 0);
+            //     std::iota(idx.begin(), idx.end(), 0);
+            //     std::sort(idx.begin(), idx.end(), [&marginals = this->max_potential_marginals_](INDEX i1, INDEX i2) {
+            //         return marginals[i1][0] + marginals[i1][1] + marginals[i1][2] < marginals[i2][0] + marginals[i2][1] + marginals[i2][2];
+            //     });
                 
-                assert(idx[0] == max_potential_index_);
-                for (const auto& currentIdx : idx) {
-                    auto currentSol = ComputeSolution(currentIdx);
-                    REAL currentSlack = max_potential_marginals_[currentIdx][0] + max_potential_marginals_[currentIdx][1] + max_potential_marginals_[currentIdx][2] - solutionObjective; 
-                    INDEX maxPossibleEdges = LinearPairwisePotentials.dim1();
-                    assert((currentSlack >= 0) && (currentIdx != 0 || currentSlack == 0));
+            //     assert(idx[0] == max_potential_index_);
+            //     for (const auto& currentIdx : idx) {
+            //         auto currentSol = ComputeSolution(currentIdx);
+            //         REAL currentSlack = max_potential_marginals_[currentIdx][0] + max_potential_marginals_[currentIdx][1] + max_potential_marginals_[currentIdx][2] - solutionObjective; 
+            //         INDEX maxPossibleEdges = LinearPairwisePotentials.dim1();
+            //         assert((currentSlack >= 0) && (currentIdx != 0 || currentSlack == 0));
 
-                    for (INDEX n1 = 0; n1 < LinearPairwisePotentials.dim1() - 1; n1++) {
-                        INDEX l1 = currentSol[n1];
-                        INDEX l2 = currentSol[n1 + 1];
-                        if (edgesLocked(n1, l1, l2) == 1) 
-                            maxPossibleEdges--;
-                    }
+            //         for (INDEX n1 = 0; n1 < LinearPairwisePotentials.dim1() - 1; n1++) {
+            //             INDEX l1 = currentSol[n1];
+            //             INDEX l2 = currentSol[n1 + 1];
+            //             if (edgesLocked(n1, l1, l2) == 1) 
+            //                 maxPossibleEdges--;
+            //         }
 
-                    assert(maxPossibleEdges > 0); // There should be atleast one edge for each path which is unique to it.
+            //         assert(maxPossibleEdges > 0); // There should be atleast one edge for each path which is unique to it.
 
-                    for (INDEX n1 = 0; n1 < LinearPairwisePotentials.dim1() - 1; n1++) {
-                        INDEX l1 = currentSol[n1];
-                        INDEX l2 = currentSol[n1 + 1];
-                        if (edgesLocked(n1, l1, l2) == 0) {
-                            edge_marginals(n1, l1, l2) = currentSlack / maxPossibleEdges;
-                            edgesLocked(n1, l1, l2) = 1;
-                        }
-                    }
-                }
-                return edge_marginals;
-            }
+            //         for (INDEX n1 = 0; n1 < LinearPairwisePotentials.dim1() - 1; n1++) {
+            //             INDEX l1 = currentSol[n1];
+            //             INDEX l2 = currentSol[n1 + 1];
+            //             if (edgesLocked(n1, l1, l2) == 0) {
+            //                 edge_marginals(n1, l1, l2) = currentSlack / maxPossibleEdges;
+            //                 edgesLocked(n1, l1, l2) = 1;
+            //             }
+            //         }
+            //     }
+            //     return edge_marginals;
+            // }
 
             std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<MaxPairwisePotential>& pots) const
             {
@@ -1812,11 +1812,11 @@ class pairwise_max_factor_tree_message {
             // msg -= omega * m; // TODO: Verify this
         }
 
-        template<typename RIGHT_FACTOR, typename MSG_ARRAY>
-        void SendMessagesToLeft(const RIGHT_FACTOR& r, MSG_ARRAY msg_begin, MSG_ARRAY msg_end, const REAL omega)
-        {
-            assert(false);
-        }
+        // template<typename RIGHT_FACTOR, typename MSG_ARRAY>
+        // void SendMessagesToLeft(const RIGHT_FACTOR& r, MSG_ARRAY msg_begin, MSG_ARRAY msg_end, const REAL omega)
+        // {
+        //     assert(false);
+        // }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
         bool ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
@@ -1923,11 +1923,11 @@ class max_factor_tree_graph_message {
             // msg -= omega*m; // TODO: Verify this
         }
 
-        template<typename RIGHT_FACTOR, typename MSG_ARRAY>
-        void SendMessagesToLeft(const RIGHT_FACTOR& r, MSG_ARRAY msg_begin, MSG_ARRAY msg_end, const REAL omega)
-        {
-            assert(false);
-        }
+        // template<typename RIGHT_FACTOR, typename MSG_ARRAY>
+        // void SendMessagesToLeft(const RIGHT_FACTOR& r, MSG_ARRAY msg_begin, MSG_ARRAY msg_end, const REAL omega)
+        // {
+        //     assert(false);
+        // }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
         bool ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
