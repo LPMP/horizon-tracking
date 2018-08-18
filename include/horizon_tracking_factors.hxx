@@ -658,6 +658,8 @@ class ShortestPathTreeInChain {
                     return; // Can use this for optimization?
 
                 max_potential_index_ = index;
+                solution_ = ComputeSolution(max_potential_index_);
+                solutionObjective = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
             }
 
             std::size_t max_potential_index() const 
