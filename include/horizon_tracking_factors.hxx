@@ -654,9 +654,6 @@ class ShortestPathTreeInChain {
             void set_max_potential_index(const std::size_t index) const
             {
                 assert(max_potential_marginals_valid_);
-                if (max_potential_index_ == index)
-                    return; // Can use this for optimization?
-
                 max_potential_index_ = index;
                 solution_ = ComputeSolution(max_potential_index_);
                 solutionObjective = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
@@ -667,10 +664,16 @@ class ShortestPathTreeInChain {
                 return max_potential_index_;
             }
         
-            std::array<REAL,3>& max_potential_marginal(const std::size_t i) { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
+            std::array<REAL,3>& max_potential_marginal(const std::size_t i) 
+            {
+                assert(i < max_potential_marginals_.size()); 
+                assert(max_potential_marginals_valid_);
+                return max_potential_marginals_[i]; 
+            }
             std::array<REAL,3> max_potential_marginal(const std::size_t i) const 
             {
                 assert(i < max_potential_marginals_.size());
+                assert(max_potential_marginals_valid_);
                 return max_potential_marginals_[i];
             }
 
