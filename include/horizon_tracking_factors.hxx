@@ -48,11 +48,13 @@ namespace LP_MP {
 
             REAL EvaluatePrimal() const
             {
+                assert(primal_computed);
                 // return cost of current solution
                 REAL linearCost = 0;
                 REAL maxCost = std::numeric_limits<REAL>::lowest();
                 for(std::size_t currentTableIndex = 0; currentTableIndex < marginals_collection_.size(); ++currentTableIndex)
                 {
+                    assert(max_potential_index_[currentTableIndex] < marginals_collection_[currentTableIndex].size());
                     maxCost = fmax(maxCost, marginals_collection_[currentTableIndex][max_potential_index_[currentTableIndex]][0]);
                     linearCost += marginals_collection_[currentTableIndex][max_potential_index_[currentTableIndex]][1];
                 }
@@ -81,10 +83,11 @@ namespace LP_MP {
                 assert(false);
             } 
 
-            INDEX& max_potential_index(const INDEX tableIndex) 
+            void set_max_potential_index(const INDEX tableIndex, const INDEX newValue) 
             {
                 assert(tableIndex < max_potential_index_.size()); 
-                return max_potential_index_[tableIndex]; 
+                max_potential_index_[tableIndex] = newValue;
+                 solutionObjective = EvaluatePrimal();
             }
             INDEX max_potential_index(const INDEX tableIndex) const
             {
@@ -180,6 +183,7 @@ namespace LP_MP {
                 solutionObjective = bestObjective;
                 max_potential_index_ = bestLabelsForTables; //TODO: The previous values for this solution will be lost! Do we need them?
                 primal_computed = true;
+                assert(std::abs(solutionObjective - EvaluatePrimal()) <= eps);
             }
 
             std::vector<INDEX> ComputeSolution(REAL maxPotValue) const 
@@ -809,7 +813,11 @@ class ShortestPathTreeInChain {
                     maxPotValue = fmax(maxPotValue, MaxPairwisePotentials(n1, solution[n1], solution[n1 + 1]));
                     linearCost += LinearPairwisePotentials(n1, solution[n1], solution[n1 + 1]);
                 }
-                assert(std::abs(maxPotValue -  maxPotThreshold) <= eps);
+                assert(maxPotValue <= maxPotThreshold); // TODO: Maybe it found a solution with same linear cost but lower max pot value
+                // ideally, this situation should not occur for the optimal solution, i.e. no need to increase the max pot threshold if lower 
+                // threshold still gives same linear cost. 
+                // Practically, this can happen when primal is being propagated from unary -> pairwise -> chains -> graph, and we choose a max pot value
+                // more than required.
                 assert(std::abs(linearCost -  max_potential_marginals_[maxPotIndex][1]) <= eps);
                 return solution;
             }
@@ -1985,7 +1993,7 @@ class max_factor_tree_graph_message {
         {
             if(l.max_potential_index() != std::numeric_limits<INDEX>::max()) {
                 const bool changed = (r.max_potential_index(entry) != l.max_potential_index());
-                r.max_potential_index(entry) = l.max_potential_index();
+                r.set_max_potential_index(entry, l.max_potential_index());
                 return changed;
             } else {
                 return false;
