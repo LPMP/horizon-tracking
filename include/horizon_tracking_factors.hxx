@@ -799,6 +799,15 @@ class ShortestPathTreeInChain {
                     solution[currentNodeToBackTrack - 1] = spTree.GetParentLabel(currentNodeToBackTrack + 1, currentLabel);
                     currentLabel = solution[currentNodeToBackTrack - 1]; 
                 }
+                REAL maxPotValue = std::numeric_limits<REAL>::lowest();
+                REAL linearCost = 0;
+                for (int n1 = 0; n1 < solution.size() - 1; n1++)
+                {
+                    maxPotValue = fmax(maxPotValue, MaxPairwisePotentials(n1, solution[n1], solution[n1 + 1]));
+                    linearCost += LinearPairwisePotentials(n1, solution[n1], solution[n1 + 1]);
+                }
+                assert(std::abs(maxPotValue -  maxPotThreshold) <= eps);
+                assert(std::abs(linearCost -  max_potential_marginals_[maxPotIndex][1]) <= eps);
                 return solution;
             }
 
