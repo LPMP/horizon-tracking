@@ -50,7 +50,7 @@ namespace LP_MP {
             {
                 // return cost of current solution
                 REAL linearCost = 0;
-                REAL maxCost = std::numeric_limits<REAL>::min();
+                REAL maxCost = std::numeric_limits<REAL>::lowest();
                 for(std::size_t currentTableIndex = 0; currentTableIndex < marginals_collection_.size(); ++currentTableIndex)
                 {
                     maxCost = fmax(maxCost, marginals_collection_[currentTableIndex][max_potential_index_[currentTableIndex]][0]);
