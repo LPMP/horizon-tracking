@@ -818,7 +818,7 @@ class ShortestPathTreeInChain {
                 // threshold still gives same linear cost. 
                 // Practically, this can happen when primal is being propagated from unary -> pairwise -> chains -> graph, and we choose a max pot value
                 // more than required.
-                assert(!force || std::abs(maxpotValue - maxPotThreshold) <= eps);
+                assert(!force || std::abs(maxPotValue - maxPotThreshold) <= eps);
                 assert(std::abs(linearCost -  max_potential_marginals_[maxPotIndex][1]) <= eps);
                 return solution;
             }
