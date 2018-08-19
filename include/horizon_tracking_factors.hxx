@@ -346,15 +346,15 @@ class ShortestPathTreeInChain {
             return *treeEdgeIndicesAndMaxPots.begin();
         }
 
-        bool CheckParentForShortestPath(INDEX currentNode, INDEX currentLabel, INDEX previousLabel, REAL currentEdgeDistance, REAL currentMaxPotValue)
+        bool CheckParentForShortestPath(INDEX currentNode, INDEX currentLabel, INDEX previousLabel, REAL currentEdgeDistance, REAL currentMaxPotValue, bool force = false)
         {
             assert(currentNode > 0);
-            REAL currentOfferedDistance = ChainNodes[currentNode - 1][previousLabel].distance + currentEdgeDistance;
-
+            REAL offeredDistance = ChainNodes[currentNode - 1][previousLabel].distance + currentEdgeDistance;
+            auto currentDistance = ChainNodes[currentNode][currentLabel].distance;
             if (!ChainNodes[currentNode][currentLabel].parentAssigned ||
-                currentOfferedDistance < ChainNodes[currentNode][currentLabel].distance)
+                (offeredDistance < currentDistance) || (force && offeredDistance == currentDistance))
             {
-                SetParent(currentNode, currentLabel, previousLabel, currentOfferedDistance, currentMaxPotValue); 
+                SetParent(currentNode, currentLabel, previousLabel, offeredDistance, currentMaxPotValue); 
                 return true;
             }
             return false;
@@ -659,7 +659,7 @@ class ShortestPathTreeInChain {
             {
                 assert(max_potential_marginals_valid_);
                 max_potential_index_ = index;
-                solution_ = ComputeSolution(max_potential_index_);
+                solution_ = ComputeSolution(max_potential_index_, true);
                 solutionObjective = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
             }
 
@@ -793,11 +793,11 @@ class ShortestPathTreeInChain {
             }
             
             // Computes the primal solution.
-            std::vector<INDEX> ComputeSolution(std::size_t maxPotIndex) const
+            std::vector<INDEX> ComputeSolution(std::size_t maxPotIndex, bool force = false) const
             {
                 assert(max_potential_marginals_valid_);
                 REAL maxPotThreshold = max_potential_marginals_[maxPotIndex][0];
-                ShortestPathTreeInChain spTree = FindAndInitializeSPTree(maxPotThreshold);
+                ShortestPathTreeInChain spTree = FindAndInitializeSPTree(maxPotThreshold, force);
                 assert(std::abs(spTree.GetCurrentPathCost() - max_potential_marginals_[maxPotIndex][1]) <= eps);
                 INDEX currentLabel = 0; // for terminal node;
                 std::vector<INDEX> solution(NumNodes - 1);
@@ -818,6 +818,7 @@ class ShortestPathTreeInChain {
                 // threshold still gives same linear cost. 
                 // Practically, this can happen when primal is being propagated from unary -> pairwise -> chains -> graph, and we choose a max pot value
                 // more than required.
+                assert(!force || std::abs(maxpotValue - maxPotThreshold) <= eps);
                 assert(std::abs(linearCost -  max_potential_marginals_[maxPotIndex][1]) <= eps);
                 return solution;
             }
@@ -844,7 +845,7 @@ class ShortestPathTreeInChain {
 
                     //TODO: Storing ALL possible max potentials, even the ones which are not feasible!                    
                     if (currentLinearCost == std::numeric_limits<REAL>::max())
-                       continue;
+                       continue; 
 
                     // Insert the marginal, and do not increment the index if the max pot was already present
                     // at previous index in which case the marginal was not inserted and we only took min:
@@ -993,7 +994,7 @@ class ShortestPathTreeInChain {
                 return idx;
             }
 
-            ShortestPathTreeInChain FindAndInitializeSPTree(REAL maxPotThreshold = INFINITY) const
+            ShortestPathTreeInChain FindAndInitializeSPTree(REAL maxPotThreshold = INFINITY, bool force = false) const
             {
                 ShortestPathTreeInChain spTree(1 + NumNodes);   // Also includes source node
                 spTree.SetLabels(0, 1);
@@ -1028,7 +1029,7 @@ class ShortestPathTreeInChain {
                             if (currentMaxPot > maxPotThreshold)
                                 continue;
 
-                            spTree.CheckParentForShortestPath(n + 1, l, prevLabel, currentLinearPot, currentMaxPot);
+                            spTree.CheckParentForShortestPath(n + 1, l, prevLabel, currentLinearPot, currentMaxPot, force);
                         }
                     }
                 }
