@@ -570,7 +570,12 @@ class ShortestPathTreeInChain {
             REAL EvaluatePrimal() const
             {
                 assert(max_potential_index_ != std::numeric_limits<std::size_t>::max());
-                return max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
+                REAL objFromIndex = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
+                auto objFromPath = PathSolutionObjective(solution_);
+                assert(std::abs(objFromPath[0] -  max_potential_marginals_[max_potential_index_][0]) <= eps);
+                // TODO: Measures the tightness of primal solution coming from left and primal solution coming from right.
+                // assert(std::abs(objFromPath[1] -  max_potential_marginals_[max_potential_index_][1]) <= eps);
+                return objFromIndex;
                 // return cost of current solution
             }
 
@@ -659,7 +664,13 @@ class ShortestPathTreeInChain {
             void set_max_potential_index(const std::size_t index) const
             {
                 assert(max_potential_marginals_valid_);
+                if (max_potential_index_ == index)
+                    return;
+
                 max_potential_index_ = index;
+                solutionObjective = std::numeric_limits<std::size_t>::max();
+                std::fill(solution_.begin(), solution_.end(), std::numeric_limits<INDEX>::max());
+
                 //solution_ = ComputeSolution(max_potential_index_, true);
                 //solutionObjective = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
             }
@@ -811,21 +822,28 @@ class ShortestPathTreeInChain {
                     solution[currentNodeToBackTrack - 1] = spTree.GetParentLabel(currentNodeToBackTrack + 1, currentLabel);
                     currentLabel = solution[currentNodeToBackTrack - 1]; 
                 }
-                REAL maxPotValue = std::numeric_limits<REAL>::lowest();
-                REAL linearCost = 0;
-                for (int n1 = 0; n1 < solution.size() - 1; n1++)
-                {
-                    maxPotValue = fmax(maxPotValue, MaxPairwisePotentials(n1, solution[n1], solution[n1 + 1]));
-                    linearCost += LinearPairwisePotentials(n1, solution[n1], solution[n1 + 1]);
-                }
-                assert(maxPotValue <= maxPotThreshold); // TODO: Maybe it found a solution with same linear cost but lower max pot value
+                auto solObj = PathSolutionObjective(solution);
+
+                assert(solObj[0] <= maxPotThreshold); // TODO: Maybe it found a solution with same linear cost but lower max pot value
                 // ideally, this situation should not occur for the optimal solution, i.e. no need to increase the max pot threshold if lower 
                 // threshold still gives same linear cost. 
                 // Practically, this can happen when primal is being propagated from unary -> pairwise -> chains -> graph, and we choose a max pot value
                 // more than required.
-                assert(!force || std::abs(maxPotValue - maxPotThreshold) <= eps);
-                assert(std::abs(linearCost -  max_potential_marginals_[maxPotIndex][1]) <= eps);
+                assert(!force || std::abs(solObj[0] - maxPotThreshold) <= eps);
+                assert(std::abs(solObj[1] -  max_potential_marginals_[maxPotIndex][1]) <= eps);
                 return solution;
+            }
+
+            std::array<REAL, 2> PathSolutionObjective(std::vector<INDEX> sol) const
+            {
+                REAL maxPotValue = std::numeric_limits<REAL>::lowest();
+                REAL linearCost = 0;
+                for (int n1 = 0; n1 < sol.size() - 1; n1++)
+                {
+                    maxPotValue = fmax(maxPotValue, MaxPairwisePotentials(n1, sol[n1], sol[n1 + 1]));
+                    linearCost += LinearPairwisePotentials(n1, sol[n1], sol[n1 + 1]);
+                }
+                return {maxPotValue, linearCost};
             }
 
             void SolveByEdgeAddition() const
