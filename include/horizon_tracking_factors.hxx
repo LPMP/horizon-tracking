@@ -87,8 +87,9 @@ namespace LP_MP {
             {
                 assert(tableIndex < max_potential_index_.size()); 
                 max_potential_index_[tableIndex] = newValue;
-                 solutionObjective = EvaluatePrimal();
+                solutionObjective = EvaluatePrimal();
             }
+
             INDEX max_potential_index(const INDEX tableIndex) const
             {
                 assert(tableIndex < max_potential_index_.size());
@@ -659,8 +660,8 @@ class ShortestPathTreeInChain {
             {
                 assert(max_potential_marginals_valid_);
                 max_potential_index_ = index;
-                solution_ = ComputeSolution(max_potential_index_, true);
-                solutionObjective = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
+                //solution_ = ComputeSolution(max_potential_index_, true);
+                //solutionObjective = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
             }
 
             std::size_t max_potential_index() const 
@@ -797,6 +798,10 @@ class ShortestPathTreeInChain {
             {
                 assert(max_potential_marginals_valid_);
                 REAL maxPotThreshold = max_potential_marginals_[maxPotIndex][0];
+                if (maxPotIndex == 13 && std::abs(maxPotThreshold - 399) <= 1)
+                {
+                    int a = 1;
+                }
                 ShortestPathTreeInChain spTree = FindAndInitializeSPTree(maxPotThreshold, force);
                 assert(std::abs(spTree.GetCurrentPathCost() - max_potential_marginals_[maxPotIndex][1]) <= eps);
                 INDEX currentLabel = 0; // for terminal node;
@@ -999,7 +1004,7 @@ class ShortestPathTreeInChain {
                 ShortestPathTreeInChain spTree(1 + NumNodes);   // Also includes source node
                 spTree.SetLabels(0, 1);
                 spTree.SetPossibleChildLabels(0, NumLabels[0]);
-
+                
                 for (INDEX i = 0; i < NumNodes; i++)
                 {
                     spTree.SetLabels(i + 1, NumLabels[i]);
@@ -1007,6 +1012,8 @@ class ShortestPathTreeInChain {
                     if (i < NumNodes - 1)
                         spTree.SetPossibleChildLabels(i + 1, NumLabels[i + 1]);
                 }
+
+                REAL maxValue = std::numeric_limits<REAL>::lowest();
                 
                 for (INDEX n = 0; n < NumNodes; n++)
                 {
@@ -1029,7 +1036,8 @@ class ShortestPathTreeInChain {
                             if (currentMaxPot > maxPotThreshold)
                                 continue;
 
-                            spTree.CheckParentForShortestPath(n + 1, l, prevLabel, currentLinearPot, currentMaxPot, force);
+                            if (spTree.CheckParentForShortestPath(n + 1, l, prevLabel, currentLinearPot, currentMaxPot, force))
+                                maxValue = fmax(maxValue, currentMaxPot);
                         }
                     }
                 }
