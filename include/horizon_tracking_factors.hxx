@@ -809,10 +809,6 @@ class ShortestPathTreeInChain {
             {
                 assert(max_potential_marginals_valid_);
                 REAL maxPotThreshold = max_potential_marginals_[maxPotIndex][0];
-                if (maxPotIndex == 13 && std::abs(maxPotThreshold - 399) <= 1)
-                {
-                    int a = 1;
-                }
                 ShortestPathTreeInChain spTree = FindAndInitializeSPTree(maxPotThreshold, force);
                 assert(std::abs(spTree.GetCurrentPathCost() - max_potential_marginals_[maxPotIndex][1]) <= eps);
                 INDEX currentLabel = 0; // for terminal node;
