@@ -179,7 +179,7 @@ class cardinality_traversal {
         struct node {
             std::size_t node_index;
             std::size_t num_labels;
-            bool operator<(const node& o) const { return node_index < o.node_index; } // or the other way around?
+            bool operator<(const node& o) const { return num_labels > o.num_labels; }
         };
 
         void add_node(std::size_t index, std::size_t num_labels) {
