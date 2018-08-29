@@ -19,4 +19,9 @@ int main()
     {
         TestUAI(solver_options_medium, grid_uai_input_medium, 4.307381);
     }
+
+    // Test on 2x6 Grid having primal issues:
+    {
+        TestUAI(solver_options_medium, grid_uai_input_primal_issue, 4.307381);
+    }
 }
