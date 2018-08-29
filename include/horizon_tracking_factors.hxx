@@ -32,6 +32,7 @@ namespace LP_MP {
                     }
                 }
                 SortingOrder = GetMaxPotsSortingOrder(MaxPotentials);
+                max_potential_index_.resize(marginals_collection_.size());
             }
 
             void init_primal() 
@@ -1876,11 +1877,11 @@ class pairwise_max_factor_tree_message {
             // msg -= omega * m; // TODO: Verify this
         }
 
-        template<typename RIGHT_FACTOR, typename MSG_ARRAY>
-        void SendMessagesToLeft(const RIGHT_FACTOR& r, MSG_ARRAY msg_begin, MSG_ARRAY msg_end, const REAL omega)
-        {
-            assert(false);
-        }
+        // template<typename RIGHT_FACTOR, typename MSG_ARRAY>
+        // void SendMessagesToLeft(const RIGHT_FACTOR& r, MSG_ARRAY msg_begin, MSG_ARRAY msg_end, const REAL omega)
+        // {
+        //     assert(false);
+        // }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
         bool ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
@@ -1992,11 +1993,11 @@ class max_factor_tree_graph_message {
             // msg -= omega*m; // TODO: Verify this
         }
 
-        template<typename RIGHT_FACTOR, typename MSG_ARRAY>
-        void SendMessagesToLeft(const RIGHT_FACTOR& r, MSG_ARRAY msg_begin, MSG_ARRAY msg_end, const REAL omega)
-        {
-            assert(false);
-        }
+        // template<typename RIGHT_FACTOR, typename MSG_ARRAY>
+        // void SendMessagesToLeft(const RIGHT_FACTOR& r, MSG_ARRAY msg_begin, MSG_ARRAY msg_end, const REAL omega)
+        // {
+        //     assert(false);
+        // }
 
         template<typename LEFT_FACTOR, typename RIGHT_FACTOR>
         bool ComputeLeftFromRightPrimal(LEFT_FACTOR& l, const RIGHT_FACTOR& r)
