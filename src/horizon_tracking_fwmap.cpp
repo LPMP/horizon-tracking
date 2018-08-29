@@ -29,20 +29,31 @@ int main(int argc, char** argv)
 
     // mark mrf factors
     auto numF = solver.GetLP().GetNumberOfFactors();
-    std::vector<FactorTypeAdapter*> factors;
+    std::vector<FactorTypeAdapter*> mrf_factors;
+    std::vector<FactorTypeAdapter*> bottleneck_factors;
     for (auto i = 0; i < numF; i++)
     {
         auto currentF = solver.GetLP().GetFactor(i);
         if (dynamic_cast<FMC_HORIZON_TRACKING::UnaryFactor*>(currentF) || 
             dynamic_cast<FMC_HORIZON_TRACKING::PairwiseFactor*>(currentF))
-            factors.push_back(currentF);
+            mrf_factors.push_back(currentF);
+        else
+            bottleneck_factors.push_back(currentF);
     }
-    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end(),std::numeric_limits<INDEX>::max()-2);
+
+    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(mrf_factors.begin(), mrf_factors.end(),std::numeric_limits<INDEX>::max()-2);
     solver.RegisterPrimal();
-    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end(),std::numeric_limits<INDEX>::max()-1);
+    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(mrf_factors.begin(), mrf_factors.end(),std::numeric_limits<INDEX>::max()-1);
     solver.RegisterPrimal();
     solver.WritePrimal();
     std::cout<<"\n\n Primal Cost: "<<solver.primal_cost();
     std::cout<<"\n Percentage duality gap: "<<100.0 * (solver.primal_cost() - solver.lower_bound()) / solver.lower_bound() <<"%\n\n";
+
+    REAL mrf_gap = 0.0;
+    for(auto* f : mrf_factors) { mrf_gap += f->EvaluatePrimal() - f->LowerBound(); }
+    REAL bottleneck_gap = 0.0;
+    for(auto* f : bottleneck_factors) { bottleneck_gap += f->EvaluatePrimal() - f->LowerBound(); }
+
+    std::cout << "mrf gap = " << mrf_gap << ", bottleneck factors gap = " << bottleneck_gap << "\n"; 
 }
  

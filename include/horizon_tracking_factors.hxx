@@ -56,7 +56,7 @@ namespace LP_MP {
                 for(std::size_t currentTableIndex = 0; currentTableIndex < marginals_collection_.size(); ++currentTableIndex)
                 {
                     assert(max_potential_index_[currentTableIndex] < marginals_collection_[currentTableIndex].size());
-                    maxCost = fmax(maxCost, marginals_collection_[currentTableIndex][max_potential_index_[currentTableIndex]][0]);
+                    maxCost = std::max(maxCost, marginals_collection_[currentTableIndex][max_potential_index_[currentTableIndex]][0]);
                     linearCost += marginals_collection_[currentTableIndex][max_potential_index_[currentTableIndex]][1];
                 }
                 return maxCost + linearCost;
@@ -88,7 +88,7 @@ namespace LP_MP {
             {
                 assert(tableIndex < max_potential_index_.size()); 
                 max_potential_index_[tableIndex] = newValue;
-                solutionObjective = EvaluatePrimal();
+                solutionObjective = EvaluatePrimal(); // TODO: remove and recompute always in EvaluatePrimal
             }
 
             INDEX max_potential_index(const INDEX tableIndex) const
@@ -573,7 +573,7 @@ class ShortestPathTreeInChain {
                 assert(max_potential_index_ != std::numeric_limits<std::size_t>::max());
                 REAL objFromIndex = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
                 auto objFromPath = PathSolutionObjective(solution_);
-                assert(std::abs(objFromPath[0] -  max_potential_marginals_[max_potential_index_][0]) <= eps);
+                //assert(std::abs(objFromPath[0] -  max_potential_marginals_[max_potential_index_][0]) <= eps);
                 // TODO: Measures the tightness of primal solution coming from left and primal solution coming from right.
                 // assert(std::abs(objFromPath[1] -  max_potential_marginals_[max_potential_index_][1]) <= eps);
                 return objFromIndex;
@@ -706,7 +706,7 @@ class ShortestPathTreeInChain {
                         solution_[n1 + 1] == std::numeric_limits<INDEX>::max())
                         return; // Solution not ready yet
                     
-                    maxPotValueInSolution = fmax(maxPotValueInSolution, MaxPairwisePotentials(n1, solution_[n1], solution_[n1 + 1]));
+                    maxPotValueInSolution = std::max(maxPotValueInSolution, MaxPairwisePotentials(n1, solution_[n1], solution_[n1 + 1]));
                 }
 
                 for (INDEX mpIndex = 0; mpIndex < max_potential_marginals_.size(); mpIndex++) {
@@ -837,7 +837,7 @@ class ShortestPathTreeInChain {
                 REAL linearCost = 0;
                 for (int n1 = 0; n1 < sol.size() - 1; n1++)
                 {
-                    maxPotValue = fmax(maxPotValue, MaxPairwisePotentials(n1, sol[n1], sol[n1 + 1]));
+                    maxPotValue = std::max(maxPotValue, MaxPairwisePotentials(n1, sol[n1], sol[n1 + 1]));
                     linearCost += LinearPairwisePotentials(n1, sol[n1], sol[n1 + 1]);
                 }
                 return {maxPotValue, linearCost};
@@ -1052,7 +1052,7 @@ class ShortestPathTreeInChain {
                                 continue;
 
                             if (spTree.CheckParentForShortestPath(n + 1, l, prevLabel, currentLinearPot, currentMaxPot, force))
-                                maxValue = fmax(maxValue, currentMaxPot);
+                                maxValue = std::max(maxValue, currentMaxPot);
                         }
                     }
                 }
@@ -1301,7 +1301,7 @@ class LabelStateSpace {
             {
                 for (auto const& currentS2Pot : s2Potentials)
                 {
-                    merged.CheckAndInsert(fmax(currentS1Pot.first, currentS2Pot.first), currentS1Pot.second + currentS2Pot.second);
+                    merged.CheckAndInsert(std::max(currentS1Pot.first, currentS2Pot.first), currentS1Pot.second + currentS2Pot.second);
                     //TODO: Probably can be made more efficient, also validate the logic.
                 }
             }
@@ -1425,7 +1425,7 @@ class max_potential_on_tree {
         void ComputeMaxPotLowerBound() const
         {
             std::array<REAL, 2> bounds = MessagePassingForOnePotential(MaxPairwisePotentials, LinearPairwisePotentials, false);
-            MaxPotentialLowerBoundForAllTrees = fmax(bounds[0], MaxPotentialLowerBoundForAllTrees); // To take max over all trees.
+            MaxPotentialLowerBoundForAllTrees = std::max(bounds[0], MaxPotentialLowerBoundForAllTrees); // To take max over all trees.
             // LinearPotentialUpperBound = bounds[1]; //TODO: If this is not useful remove it and compute max potential lb only once and store it, as it will not change.
             // Seems like LinearPotentialUpperBound wont help in anything, so we dont need to call this function again and again after updated linear pots.
         }
@@ -1528,7 +1528,7 @@ class max_potential_on_tree {
                 {
                     for (const auto& currentMessageTolt: tailMessages[lt].GetPotentials()) // Iterator over all messages incoming to l1.
                     {
-                        lhStateSpace.CheckAndInsert(fmax(currentMessageTolt.second, edgeMaxPot), currentMessageTolt.first + edgeLinearPot);
+                        lhStateSpace.CheckAndInsert(std::max(currentMessageTolt.second, edgeMaxPot), currentMessageTolt.first + edgeLinearPot);
                     }
                 }
                 else
@@ -1662,11 +1662,11 @@ class max_potential_on_tree {
                     if (doConventional)
                     {
                         mainMessages[head][lh] += minMessage[0];
-                        otherMessages[head][lh] = fmax(otherMessages[head][lh], minMessage[1]);
+                        otherMessages[head][lh] = std::max(otherMessages[head][lh], minMessage[1]);
                     }
                     else
                     {
-                        mainMessages[head][lh] = fmax(mainMessages[head][lh], minMessage[0]);                                            
+                        mainMessages[head][lh] = std::max(mainMessages[head][lh], minMessage[0]);                                            
                         otherMessages[head][lh] += minMessage[1];
                     }
                 }
@@ -1717,7 +1717,7 @@ class max_potential_on_tree {
 
                 else
                 {
-                    REAL msg = fmax(currentIncomingMsg, currentEdgePot);
+                    REAL msg = std::max(currentIncomingMsg, currentEdgePot);
                     if (msg < bestMainMessage)
                     {
                         bestMainMessage = msg;
@@ -1727,7 +1727,7 @@ class max_potential_on_tree {
             }
 
             if (doConventional)
-                bestOtherMessage = fmax(!isReverse ? otherPairwisePots(edgeIndex, bestlt, lh) :  otherPairwisePots(edgeIndex, lh, bestlt), tailOtherMessages[bestlt]);
+                bestOtherMessage = std::max(!isReverse ? otherPairwisePots(edgeIndex, bestlt, lh) :  otherPairwisePots(edgeIndex, lh, bestlt), tailOtherMessages[bestlt]);
 
             else
                 bestOtherMessage = (!isReverse ? otherPairwisePots(edgeIndex, bestlt, lh) : otherPairwisePots(edgeIndex, lh, bestlt)) + tailOtherMessages[bestlt];
