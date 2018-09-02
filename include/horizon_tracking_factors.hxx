@@ -42,8 +42,7 @@ namespace LP_MP {
 
             REAL LowerBound() const
             {
-                Solve();
-                return solutionObjective;
+                return Solve();
                 // compute optimal solution and return its cost
             }
 
@@ -88,7 +87,6 @@ namespace LP_MP {
             {
                 assert(tableIndex < max_potential_index_.size()); 
                 max_potential_index_[tableIndex] = newValue;
-                solutionObjective = EvaluatePrimal(); // TODO: remove and recompute always in EvaluatePrimal
             }
 
             INDEX max_potential_index(const INDEX tableIndex) const
@@ -121,12 +119,11 @@ namespace LP_MP {
 
             std::vector<MaxPotentialElement> MaxPotentials;
             mutable std::vector<INDEX> max_potential_index_;
-            mutable REAL solutionObjective;
             mutable bool primal_computed = false;
             std::vector<INDEX> SortingOrder;
 
             template <bool computeMarginals = false> 
-            void Solve() const
+            REAL Solve() const
             {
                 INDEX numCovered = 0;
                 INDEX numTables = marginals_collection_.size();
@@ -182,10 +179,12 @@ namespace LP_MP {
                     }
                 }
 
-                solutionObjective = bestObjective;
-                max_potential_index_ = bestLabelsForTables; //TODO: The previous values for this solution will be lost! Do we need them?
+                max_potential_index_ = bestLabelsForTables;
                 primal_computed = true;
-                assert(std::abs(solutionObjective - EvaluatePrimal()) <= eps);
+#ifndef NDEBUG 
+                assert(std::abs(bestObjective - EvaluatePrimal()) <= eps);
+#endif
+                return bestObjective;
             }
 
             std::vector<INDEX> ComputeSolution(REAL maxPotValue) const 
@@ -240,10 +239,12 @@ namespace LP_MP {
                     messagesToChains[t].resize(marginals_collection_.size(), 0);
                 }
 
+                REAL optimalObj = EvaluatePrimal();
+
                 for (const auto& currentIdx : idx) {
                     REAL currentMaxPotValue = combined_marginals_[currentIdx][0];
                     auto currentSol = ComputeSolution(currentMaxPotValue);
-                    REAL currentSlack = combined_marginals_[currentIdx][0] + combined_marginals_[currentIdx][1] - solutionObjective;
+                    REAL currentSlack = combined_marginals_[currentIdx][0] + combined_marginals_[currentIdx][1] - optimalObj;
                     assert(currentSlack >= 0);
                     INDEX maxPossibleChains = numTables;
                     for (INDEX t = 0; t < numTables; t++)
@@ -489,705 +490,699 @@ class ShortestPathTreeInChain {
         }
 };
 
-    class max_potential_on_chain {
-        struct MaxPairwisePotential {
-            REAL value;
-            INDEX n1, n2; 
-            INDEX l1, l2; 
-        };
+class max_potential_on_chain {       
+public:     
+    struct MaxPairwisePotentialEntry{
+        REAL value;
+        INDEX edgeIndex;
+        INDEX n1;
+        INDEX n2; 
+        INDEX l1;
+        INDEX l2; 
+    };
 
-        struct AffectedVertex
+    struct AffectedVertex
+    {
+        INDEX n;
+        INDEX l;
+        INDEX parentLabel;
+        REAL delta;
+        REAL newDistance;
+        REAL maxPot;
+        bool operator<(const AffectedVertex& rhs) const
         {
-            INDEX n;
-            INDEX l;
-            INDEX parentLabel;
-            REAL delta;
-            REAL newDistance;
-            REAL maxPot;
-            bool operator<(const AffectedVertex& rhs) const
-            {
-                if (delta > rhs.delta)
-                    return 1;
+            if (delta > rhs.delta)
+                return 1;
 
-                if (delta == rhs.delta)
-                    return newDistance > rhs.newDistance;
+            if (delta == rhs.delta)
+                return newDistance > rhs.newDistance;
 
-                return 0;
-            }           
-        };
+            return 0;
+        }           
+    };
 
-        struct EdgePriority
+    struct EdgePriority
+    {
+        REAL value;
+        INDEX index;
+    };
+            
+    struct EdgePriorityComparison
+    {
+        bool operator() (const EdgePriority& lhs, const EdgePriority& rhs)
         {
-            REAL value;
-            INDEX index;
-        };
+            return lhs.value < rhs.value;
+        }
+    };
+    three_dimensional_variable_array<REAL> LinearPairwisePotentials;  
+
+    max_potential_on_chain() {}
+    max_potential_on_chain(const three_dimensional_variable_array<REAL>& maxPairwisePotentials, const three_dimensional_variable_array<REAL>& linearPairwisePotentials, const std::vector<INDEX>& numLabels, INDEX chainIndex, bool useEdgeDeletion = false)
+    :
+        LinearPairwisePotentials(linearPairwisePotentials),
+        MaxPairwisePotentials(maxPairwisePotentials),
+        NumNodes(numLabels.size()),
+        NumLabels(numLabels),
+        ChainIndex(chainIndex),
+        UseEdgeDeletion(useEdgeDeletion)
+    {
+        assert(maxPairwisePotentials.dim1() + 1 == numLabels.size()); 
+        assert(maxPairwisePotentials.dim1() == linearPairwisePotentials.dim1());
+        for(std::size_t n1=0; n1<maxPairwisePotentials.dim1(); ++n1) {
+            assert(maxPairwisePotentials.dim2(n1) == linearPairwisePotentials.dim2(n1) && maxPairwisePotentials.dim3(n1) == linearPairwisePotentials.dim3(n1));
+            for(std::size_t i=0; i<maxPairwisePotentials.dim2(n1); ++i) {
+                for(std::size_t j=0; j<maxPairwisePotentials.dim3(n1); ++j) {
+                    MaxPotentials1D.push_back( {maxPairwisePotentials(n1,i,j), n1, n1, n1+1, i, j} );
+                }
+            }
+        }
+        MaxPotsSortingOrder = GetPairwisePotsSortingOrder(MaxPotentials1D);
+        solution_.assign(NumNodes, 0);
+        init_primal();
+        InsertTerminalNode();
+    }
+
+    REAL LowerBound() const
+    {
+        if (!max_potential_marginals_valid_)
+            Solve();
+            
+        INDEX bestIndex = GetBestMarginal();
+        return max_potential_marginals_[bestIndex][1] + max_potential_marginals_[bestIndex][2];
+        // compute optimal solution and return its cost
+    }
+
+    REAL EvaluatePrimal() const
+    {
+        assert(max_potential_index_ != std::numeric_limits<std::size_t>::max());
+        REAL objFromIndex = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
+        auto objFromPath = PathSolutionObjective(solution_);
+        //assert(std::abs(objFromPath[0] -  max_potential_marginals_[max_potential_index_][0]) <= eps);
+        // TODO: Measures the tightness of primal solution coming from left and primal solution coming from right.
+        // assert(std::abs(objFromPath[1] -  max_potential_marginals_[max_potential_index_][1]) <= eps);
+        return objFromIndex;
+        // return cost of current solution
+    }
+
+    void MaximizePotentialAndComputePrimal()
+    {
+        const bool labels_computed = *std::max_element(solution_.begin(), solution_.end()) < std::numeric_limits<INDEX>::max();
+        const bool max_potential_index_computed = max_potential_index_ != std::numeric_limits<std::size_t>::max();
         
-        struct EdgePriorityComparison
+        if (max_potential_index_computed && labels_computed) return;
+        if (max_potential_index_computed) {
+            solution_ = ComputeSolution(max_potential_index_); 
+            solutionObjective = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
+            return; 
+        }
+        if (!max_potential_index_computed && !labels_computed) { 
+            if (!max_potential_marginals_valid_) {
+                Solve();
+                set_max_potential_index(GetBestMarginal());
+            }
+            solution_ = ComputeSolution(max_potential_index_);
+            solutionObjective = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
+        }
+        if (labels_computed && !max_potential_index_computed) {
+            assert(false);
+        }
+    }
+
+    template<class ARCHIVE> void serialize_primal(ARCHIVE& ar) { ar(); }
+    template<class ARCHIVE> void serialize_dual(ARCHIVE& ar) { ar( LinearPairwisePotentials.data() ); }
+
+    auto export_variables() { return std::tie( ); }
+    void init_primal() 
+    {
+        max_potential_index_ = std::numeric_limits<std::size_t>::max();
+        solutionObjective = std::numeric_limits<std::size_t>::max();
+        std::fill(solution_.begin(), solution_.end(), std::numeric_limits<INDEX>::max());
+    } 
+
+    void invalidate_marginals()
+    {
+        max_potential_marginals_valid_ = false;
+    }
+
+    template<typename ARRAY>
+    void apply(ARRAY& a) const 
+    { 
+        std::size_t offset = 0;
+        for(INDEX n=0; n<solution_.size()-1; ++n) {
+            a[offset + solution_[n]* LinearPairwisePotentials.dim3(n) + solution_[n+1]];
+            offset += LinearPairwisePotentials.dim2(n) * LinearPairwisePotentials.dim3(n); 
+        }
+    }
+
+    template<typename EXTERNAL_SOLVER>
+    void construct_constraints(EXTERNAL_SOLVER& s) const
+    {
+        assert(false);
+    }
+    template<typename EXTERNAL_SOLVER>
+    void convert_primal(EXTERNAL_SOLVER& s)
+    {
+        assert(false);
+    } 
+
+    INDEX& solution(const std::size_t i) 
+    {
+        assert(i < solution_.size()); 
+        return solution_[i]; 
+    }
+
+    INDEX solution(const std::size_t i) const 
+    {
+        assert(i < solution_.size());
+        const bool labels_computed = *std::max_element(solution_.begin(), solution_.end()) < std::numeric_limits<std::size_t>::max();
+        // assert(labels_computed); //TODO: Turning off for primal propagation, this is being handled outside i.e.(<dim())
+        return solution_[i]; 
+    }
+
+    void set_max_potential_index(const std::size_t index) const
+    {
+        assert(max_potential_marginals_valid_);
+        if (max_potential_index_ == index)
+            return;
+
+        max_potential_index_ = index;
+        solutionObjective = std::numeric_limits<std::size_t>::max();
+        std::fill(solution_.begin(), solution_.end(), std::numeric_limits<INDEX>::max());
+    }
+
+    std::size_t max_potential_index() const 
+    {
+        return max_potential_index_;
+    }
+
+    std::array<REAL,3>& max_potential_marginal(const std::size_t i) 
+    {
+        assert(i < max_potential_marginals_.size()); 
+        assert(max_potential_marginals_valid_);
+        return max_potential_marginals_[i]; 
+    }
+    std::array<REAL,3> max_potential_marginal(const std::size_t i) const 
+    {
+        assert(i < max_potential_marginals_.size());
+        assert(max_potential_marginals_valid_);
+        return max_potential_marginals_[i];
+    }
+
+    std::vector<std::array<REAL,3>> max_potential_marginals() const 
+    {
+        return max_potential_marginals_;
+    }
+
+    void ComputeMaxPotentialIndexFromSolution() const {
+        REAL maxPotValueInSolution = std::numeric_limits<REAL>::lowest();
+        for (INDEX n1 = 0; n1 < solution_.size() - 1; n1++) {
+            if (solution_[n1] == std::numeric_limits<INDEX>::max() || 
+                solution_[n1 + 1] == std::numeric_limits<INDEX>::max())
+                return; // Solution not ready yet
+            
+            maxPotValueInSolution = std::max(maxPotValueInSolution, MaxPairwisePotentials(n1, solution_[n1], solution_[n1 + 1]));
+        }
+
+        for (INDEX mpIndex = 0; mpIndex < max_potential_marginals_.size(); mpIndex++) {
+            if (maxPotValueInSolution == max_potential_marginals_[mpIndex][0]) {
+                max_potential_index_ = mpIndex;
+                return;
+            }
+        }
+        assert(false); // should be able to find the max pot value of solution in marginals!
+    }
+
+    // three_dimensional_variable_array<REAL> edge_marginals() const
+    // {
+    //     return ComputeMessagesToPairwise();
+    // }
+
+protected:
+    std::vector<INDEX> NumLabels;
+    // primal solution
+    mutable std::vector<INDEX> solution_;
+    mutable std::size_t max_potential_index_;
+    three_dimensional_variable_array<REAL> MaxPairwisePotentials;
+    mutable std::vector<MaxPairwisePotentialEntry> MaxPotentials1D;
+    std::vector<INDEX> MaxPotsSortingOrder;
+    mutable std::vector<std::array<REAL,3>> max_potential_marginals_; // (i) max potential, (ii) minimum linear potential, (iii) cost of configuration 
+    mutable bool max_potential_marginals_valid_ = false;
+    mutable bool MaxPotMarginalsInitialized = false;
+    INDEX ChainIndex;
+
+    bool UseEdgeDeletion;
+
+    int NumNodes; //TODO: Change to INDEX
+    mutable REAL solutionObjective = std::numeric_limits<std::size_t>::max();
+
+    // This function will only compute the marginals, not the solution objective nor the primal solution.
+    INDEX GetBestMarginal() const
+    {
+        assert(max_potential_marginals_valid_);
+        REAL bestCost = std::numeric_limits<std::size_t>::max();
+        INDEX bestIndex;
+
+        for (INDEX currentMaxPotIndex = 0; currentMaxPotIndex < max_potential_marginals_.size(); ++currentMaxPotIndex)
         {
-            bool operator() (const EdgePriority& lhs, const EdgePriority& rhs)
+            auto currentMarginal = max_potential_marginals_[currentMaxPotIndex];
+            auto currentCost = currentMarginal[0] + currentMarginal[1] + currentMarginal[2];
+            if (currentCost < bestCost)
             {
-                return lhs.value < rhs.value;
+                bestIndex = currentMaxPotIndex;
+                bestCost = currentCost;
             }
-        };
-        
-        public:     
-            three_dimensional_variable_array<REAL> LinearPairwisePotentials;  
+        }
+        return bestIndex;
+    }
 
-            max_potential_on_chain(const three_dimensional_variable_array<REAL>& maxPairwisePotentials, const three_dimensional_variable_array<REAL>& linearPairwisePotentials, const std::vector<INDEX>& numLabels, INDEX chainIndex, bool useEdgeDeletion = false)
-            :
-                LinearPairwisePotentials(linearPairwisePotentials),
-                MaxPairwisePotentials(maxPairwisePotentials),
-                NumNodes(numLabels.size()),
-                NumLabels(numLabels),
-                ChainIndex(chainIndex),
-                UseEdgeDeletion(useEdgeDeletion)
-            {
-                assert(maxPairwisePotentials.dim1() + 1 == numLabels.size()); 
-                assert(maxPairwisePotentials.dim1() == linearPairwisePotentials.dim1());
-                for(std::size_t n1=0; n1<maxPairwisePotentials.dim1(); ++n1) {
-                    assert(maxPairwisePotentials.dim2(n1) == linearPairwisePotentials.dim2(n1) && maxPairwisePotentials.dim3(n1) == linearPairwisePotentials.dim3(n1));
-                    for(std::size_t i=0; i<maxPairwisePotentials.dim2(n1); ++i) {
-                        for(std::size_t j=0; j<maxPairwisePotentials.dim3(n1); ++j) {
-                            MaxPotentials1D.push_back( {maxPairwisePotentials(n1,i,j), n1, n1+1, i, j} );
-                        }
-                    }
-                }
-                MaxPotsSortingOrder = GetPairwisePotsSortingOrder(MaxPotentials1D);
-                solution_.assign(NumNodes, 0);
-                init_primal();
-                InsertTerminalNode();
-            }
 
-            REAL LowerBound() const
-            {
-                if (!max_potential_marginals_valid_)
-                    Solve();
-                    
-                INDEX bestIndex = GetBestMarginal();
-                return max_potential_marginals_[bestIndex][1] + max_potential_marginals_[bestIndex][2];
-                // compute optimal solution and return its cost
-            }
-
-            REAL EvaluatePrimal() const
-            {
-                assert(max_potential_index_ != std::numeric_limits<std::size_t>::max());
-                REAL objFromIndex = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
-                auto objFromPath = PathSolutionObjective(solution_);
-                //assert(std::abs(objFromPath[0] -  max_potential_marginals_[max_potential_index_][0]) <= eps);
-                // TODO: Measures the tightness of primal solution coming from left and primal solution coming from right.
-                // assert(std::abs(objFromPath[1] -  max_potential_marginals_[max_potential_index_][1]) <= eps);
-                return objFromIndex;
-                // return cost of current solution
-            }
-
-            REAL objective() const  //TODO: Duplicate to EvaluatePrimal.
-            {
-                // TODO: I think we dont need this now:
-                // const auto *std::min_element(max_potential_marginals_.begin(), max_potential_marginals_.end(), [](auto& m1, auto& m2) { return m1[1] + m1[2] < m2[1] + m2[2]; })
-                return solutionObjective;
-            }
-
-            void MaximizePotentialAndComputePrimal()
-            {
-                const bool labels_computed = *std::max_element(solution_.begin(), solution_.end()) < std::numeric_limits<INDEX>::max();
-                const bool max_potential_index_computed = max_potential_index_ != std::numeric_limits<std::size_t>::max();
-                
-                if (max_potential_index_computed && labels_computed) return;
-                if (max_potential_index_computed) {
-                    solution_ = ComputeSolution(max_potential_index_); 
-                    solutionObjective = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
-                    return; 
-                }
-                if (!max_potential_index_computed && !labels_computed) { 
-                    if (!max_potential_marginals_valid_) {
-                        Solve();
-                        set_max_potential_index(GetBestMarginal());
-                    }
-                    solution_ = ComputeSolution(max_potential_index_);
-                    solutionObjective = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
-                }
-                if (labels_computed && !max_potential_index_computed) {
-                    assert(false);
+    template <bool insertEnd>
+    bool InsertMarginal(REAL maxPotValue, INDEX insertionIndex, REAL currentLinearCost) const
+    {
+        if (!MaxPotMarginalsInitialized) {
+            if(insertEnd) {
+                if(max_potential_marginals_.size() > 0 && max_potential_marginals_.back()[0] == maxPotValue) {
+                    max_potential_marginals_.back()[1] = std::min(max_potential_marginals_.back()[1], currentLinearCost);
+                } else { 
+                    max_potential_marginals_.push_back({maxPotValue, currentLinearCost, 0});
                 }
             }
-
-            template<class ARCHIVE> void serialize_primal(ARCHIVE& ar) { ar(); }
-            template<class ARCHIVE> void serialize_dual(ARCHIVE& ar) { ar( LinearPairwisePotentials.data() ); }
-
-            auto export_variables() { return std::tie( ); }
-            void init_primal() 
-            {
-                max_potential_index_ = std::numeric_limits<std::size_t>::max();
-                solutionObjective = std::numeric_limits<std::size_t>::max();
-                std::fill(solution_.begin(), solution_.end(), std::numeric_limits<INDEX>::max());
-            } 
-
-            void invalidate_marginals()
-            {
-                max_potential_marginals_valid_ = false;
+            else {
+                if(max_potential_marginals_.size() > 0 && max_potential_marginals_.front()[0] == maxPotValue) {
+                    max_potential_marginals_.front()[1] = std::min(max_potential_marginals_.front()[1], currentLinearCost);
+                }
+                else {
+                    max_potential_marginals_.insert(max_potential_marginals_.begin(), {maxPotValue, currentLinearCost, 0});
+                }
+            }
+        }
+        else {                       
+            // Check if the current max potential value is also present in the marginals (can only be present at adjacent index as they are sorted),
+            // if yes just take the minimum of the linear costs.
+            INDEX adjacentIndex = insertionIndex + (insertEnd ? -1:1);
+            if (adjacentIndex >= 0 && adjacentIndex <= max_potential_marginals_.size() - 1 &&
+                max_potential_marginals_[adjacentIndex][0] == maxPotValue) {
+                    max_potential_marginals_[adjacentIndex][1] = std::min(max_potential_marginals_[adjacentIndex][1], currentLinearCost);
+                    return false;
             }
             
-            template<typename ARRAY>
-            void apply(ARRAY& a) const 
-            { 
-                std::size_t offset = 0;
-                for(INDEX n=0; n<solution_.size()-1; ++n) {
-                    a[offset + solution_[n]* LinearPairwisePotentials.dim3(n) + solution_[n+1]];
-                    offset += LinearPairwisePotentials.dim2(n) * LinearPairwisePotentials.dim3(n); 
+            assert(maxPotValue == max_potential_marginals_[insertionIndex][0]);                   
+            max_potential_marginals_[insertionIndex][1] = currentLinearCost;
+
+            return true;
+        }
+    }
+
+    std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<MaxPairwisePotentialEntry>& pots) const
+    {
+        std::vector<INDEX> idx(pots.size());
+        std::iota(idx.begin(), idx.end(), 0);
+        std::sort(idx.begin(), idx.end(), [&pots](INDEX i1, INDEX i2) {return pots[i1].value < pots[i2].value;});
+        return idx;
+    }
+
+private:
+    virtual void Solve() const
+    {
+        if (UseEdgeDeletion)
+            SolveByEdgeDeletion();
+        else
+            SolveByEdgeAddition();
+
+        MaxPotMarginalsInitialized = true;
+        max_potential_marginals_valid_ = true;
+    }
+
+    void InsertTerminalNode()
+    {
+        INDEX lastNodeNumStates = NumLabels[NumNodes - 1];
+        for (int l1 = 0; l1 < lastNodeNumStates; l1++)
+        {
+            MaxPairwisePotentialEntry currentPot;
+            currentPot.n1 = NumNodes - 1;
+            currentPot.edgeIndex = NumNodes - 1;
+            currentPot.n2 = NumNodes;
+            currentPot.l1 = l1;
+            currentPot.l2 = 0;
+            currentPot.value = std::numeric_limits<REAL>::lowest();
+            MaxPotentials1D.push_back(currentPot);
+        }
+        NumLabels.push_back(1); // Terminal Node has one label
+        NumNodes = NumNodes + 1;
+    }
+
+    void RemoveTerminalNode()
+    {
+        for (int currentEdgeToRemove = MaxPotentials1D.size() - 1; currentEdgeToRemove >= 0; currentEdgeToRemove--)
+        {
+            if (MaxPotentials1D[currentEdgeToRemove].n2 < NumNodes - 1)
+                break;
+
+            MaxPotentials1D.erase(MaxPotentials1D.begin() + currentEdgeToRemove);
+        }
+
+        NumNodes = NumNodes - 1;
+        NumLabels.pop_back();
+    }
+
+    // Computes the primal solution.
+    virtual std::vector<INDEX> ComputeSolution(std::size_t maxPotIndex, bool force = false) const
+    {
+        assert(max_potential_marginals_valid_);
+        REAL maxPotThreshold = max_potential_marginals_[maxPotIndex][0];
+        ShortestPathTreeInChain spTree = FindAndInitializeSPTree(maxPotThreshold, force);
+        assert(std::abs(spTree.GetCurrentPathCost() - max_potential_marginals_[maxPotIndex][1]) <= eps);
+        INDEX currentLabel = 0; // for terminal node;
+        std::vector<INDEX> solution(NumNodes - 1);
+        for (int currentNodeToBackTrack = NumNodes - 1; currentNodeToBackTrack >= 1; currentNodeToBackTrack--) // Exclude source node.
+        {
+            solution[currentNodeToBackTrack - 1] = spTree.GetParentLabel(currentNodeToBackTrack + 1, currentLabel);
+            currentLabel = solution[currentNodeToBackTrack - 1]; 
+        }
+        auto solObj = PathSolutionObjective(solution);
+
+        assert(solObj[0] <= maxPotThreshold); // TODO: Maybe it found a solution with same linear cost but lower max pot value
+        // ideally, this situation should not occur for the optimal solution, i.e. no need to increase the max pot threshold if lower 
+        // threshold still gives same linear cost. 
+        // Practically, this can happen when primal is being propagated from unary -> pairwise -> chains -> graph, and we choose a max pot value
+        // more than required.
+        assert(!force || std::abs(solObj[0] - maxPotThreshold) <= eps);
+        assert(std::abs(solObj[1] -  max_potential_marginals_[maxPotIndex][1]) <= eps);
+        return solution;
+    }
+
+    virtual std::array<REAL, 2> PathSolutionObjective(std::vector<INDEX> sol) const
+    {
+        REAL maxPotValue = std::numeric_limits<REAL>::lowest();
+        REAL linearCost = 0;
+        for (int n1 = 0; n1 < sol.size() - 1; n1++)
+        {
+            maxPotValue = std::max(maxPotValue, MaxPairwisePotentials(n1, sol[n1], sol[n1 + 1]));
+            linearCost += LinearPairwisePotentials(n1, sol[n1], sol[n1 + 1]);
+        }
+        return {maxPotValue, linearCost};
+    }
+
+    virtual void SolveByEdgeAddition() const
+    {
+        REAL bestSolutionCost = INFINITY;
+        std::vector<std::vector<REAL> > distanceFromSource(NumNodes);
+        REAL initialValue = 0;
+        for (INDEX i = 0 ; i < NumNodes ; i++ )
+        {
+            if (i > 0)
+                initialValue = std::numeric_limits<REAL>::max();
+
+            distanceFromSource[i].resize(NumLabels[i], initialValue);
+        }
+
+        INDEX currentMaxPotIndex = 0;
+        for(const auto& currentEdgeToInsert : MaxPotsSortingOrder)
+        {
+            bool foundPath = UpdateDistances(currentEdgeToInsert, distanceFromSource, MaxPotentials1D[currentEdgeToInsert].value);
+
+            REAL currentLinearCost =  distanceFromSource[NumNodes - 1][0]; 
+
+            //TODO: Storing ALL possible max potentials, even the ones which are not feasible!                    
+            if (currentLinearCost == std::numeric_limits<REAL>::max())
+                continue; 
+
+            // Insert the marginal, and do not increment the index if the max pot was already present
+            // at previous index in which case the marginal was not inserted and we only took min:
+            if (InsertMarginal<true>(MaxPotentials1D[currentEdgeToInsert].value, currentMaxPotIndex, currentLinearCost))
+                currentMaxPotIndex++;
+        }
+    }
+
+    virtual bool UpdateDistances(INDEX edgeToUpdate, std::vector<std::vector<REAL> >& distanceFromSource, REAL maxPotThresh) const
+    {
+        bool reachedTerminal = false;
+        std::queue<INDEX> queue;
+        queue.push(edgeToUpdate);
+
+        while(!queue.empty())
+        {
+            INDEX currentEdge = queue.front();
+            queue.pop();
+            const auto& currentMaxPot = MaxPotentials1D[currentEdge];
+            REAL currentLinearPot = 0;
+            const auto& n1 = currentMaxPot.n1;
+            const auto& n2 = currentMaxPot.n2;
+            const auto& l1 = currentMaxPot.l1;
+            const auto& l2 = currentMaxPot.l2;
+
+            if (n2 < NumNodes - 1) // As LinearPairwisePotentials does not contain potentials from last node to terminal node
+                currentLinearPot = LinearPairwisePotentials(n1, l1, l2);
+            
+            REAL offeredDistanceTon2l2 = distanceFromSource[n1][l1] + currentLinearPot;
+            auto currentDistanceTon2l2 = distanceFromSource[n2][l2];
+
+            if (offeredDistanceTon2l2 >= currentDistanceTon2l2)
+                continue;
+
+            distanceFromSource[n2][l2] = offeredDistanceTon2l2;
+            
+            if (n2 == NumNodes - 1)
+            {
+                reachedTerminal = true;
+                continue;
+            }
+
+            INDEX n3 = n2 + 1;
+
+            // The distance of n2, l2 has been updated so add all of its immediate children to the queue to be inspected.
+            INDEX firstEdgeToConsider = currentEdge + (NumLabels[n2] - 1 - l2) + (NumLabels[n1] - 1 - l1) * NumLabels[n2] + l2 * NumLabels[n3] + 1;
+            for (INDEX l3 = 0, currentEdgeToConsider = firstEdgeToConsider; l3 < NumLabels[n3]; ++l3, ++currentEdgeToConsider)
+            {
+                // Do not consider this potential as it has not been added through sorting yet.
+                if (MaxPotentials1D[currentEdgeToConsider].value > maxPotThresh)
+                    continue;
+                
+                // auto childMaxPot = MaxPotentials1D[currentEdgeToConsider];
+                // assert(childMaxPot.l1 == l2);
+                // assert(childMaxPot.l2 == l3); // Might fail if some of the pairwise potentials are not present thus causing jumps!
+                queue.push(currentEdgeToConsider);
+            }
+        }
+        return reachedTerminal;
+    }
+
+    // For primal propagation back to pairwise potentials.
+    // three_dimensional_variable_array<REAL> ComputeMessagesToPairwise() const
+    // {
+    //     std::vector<INDEX> idx(max_potential_marginals_.size());
+    //     three_dimensional_variable_array<uint8_t> edgesLocked;
+    //     auto potsDimensions = LinearPairwisePotentials.dimensions();
+    //     edgesLocked.resize(potsDimensions.begin(), potsDimensions.end(), 0);
+    //     three_dimensional_variable_array<REAL> edge_marginals;
+    //     edge_marginals.resize(potsDimensions.begin(), potsDimensions.end(), 0);
+    //     std::iota(idx.begin(), idx.end(), 0);
+    //     std::sort(idx.begin(), idx.end(), [&marginals = this->max_potential_marginals_](INDEX i1, INDEX i2) {
+    //         return marginals[i1][0] + marginals[i1][1] + marginals[i1][2] < marginals[i2][0] + marginals[i2][1] + marginals[i2][2];
+    //     });
+        
+    //     assert(idx[0] == max_potential_index_);
+    //     for (const auto& currentIdx : idx) {
+    //         auto currentSol = ComputeSolution(currentIdx);
+    //         REAL currentSlack = max_potential_marginals_[currentIdx][0] + max_potential_marginals_[currentIdx][1] + max_potential_marginals_[currentIdx][2] - solutionObjective; 
+    //         INDEX maxPossibleEdges = LinearPairwisePotentials.dim1();
+    //         assert((currentSlack >= 0) && (currentIdx != 0 || currentSlack == 0));
+
+    //         for (INDEX n1 = 0; n1 < LinearPairwisePotentials.dim1() - 1; n1++) {
+    //             INDEX l1 = currentSol[n1];
+    //             INDEX l2 = currentSol[n1 + 1];
+    //             if (edgesLocked(n1, l1, l2) == 1) 
+    //                 maxPossibleEdges--;
+    //         }
+
+    //         assert(maxPossibleEdges > 0); // There should be atleast one edge for each path which is unique to it.
+
+    //         for (INDEX n1 = 0; n1 < LinearPairwisePotentials.dim1() - 1; n1++) {
+    //             INDEX l1 = currentSol[n1];
+    //             INDEX l2 = currentSol[n1 + 1];
+    //             if (edgesLocked(n1, l1, l2) == 0) {
+    //                 edge_marginals(n1, l1, l2) = currentSlack / maxPossibleEdges;
+    //                 edgesLocked(n1, l1, l2) = 1;
+    //             }
+    //         }
+    //     }
+    //     return edge_marginals;
+    // }
+
+    ShortestPathTreeInChain FindAndInitializeSPTree(REAL maxPotThreshold = INFINITY, bool force = false) const
+    {
+        ShortestPathTreeInChain spTree(1 + NumNodes);   // Also includes source node
+        spTree.SetLabels(0, 1);
+        spTree.SetPossibleChildLabels(0, NumLabels[0]);
+        
+        for (INDEX i = 0; i < NumNodes; i++)
+        {
+            spTree.SetLabels(i + 1, NumLabels[i]);
+
+            if (i < NumNodes - 1)
+                spTree.SetPossibleChildLabels(i + 1, NumLabels[i + 1]);
+        }
+
+        REAL maxValue = std::numeric_limits<REAL>::lowest();
+        
+        for (INDEX n = 0; n < NumNodes; n++)
+        {
+            for (INDEX l = 0; l < NumLabels[n]; l++)
+            {
+                INDEX prevNumLabels = 1;
+                if (n > 0)
+                    prevNumLabels = NumLabels[n - 1];
+
+                for (INDEX prevLabel = 0; prevLabel < prevNumLabels; prevLabel++)
+                {
+                    REAL currentLinearPot = 0;
+                    REAL currentMaxPot = std::numeric_limits<REAL>::lowest();
+                    if (n < NumNodes - 1 && n > 0)   // Source and Terminal node potentials are not present in it.
+                    {
+                        currentLinearPot = LinearPairwisePotentials(n - 1, prevLabel, l);
+                        currentMaxPot = MaxPairwisePotentials(n - 1, prevLabel, l);
+                    }
+                    
+                    if (currentMaxPot > maxPotThreshold)
+                        continue;
+
+                    if (spTree.CheckParentForShortestPath(n + 1, l, prevLabel, currentLinearPot, currentMaxPot, force))
+                        maxValue = std::max(maxValue, currentMaxPot);
                 }
             }
+        }
 
-            template<typename EXTERNAL_SOLVER>
-            void construct_constraints(EXTERNAL_SOLVER& s) const
+        return spTree;
+    }
+
+    virtual void SolveByEdgeDeletion() const
+    {
+        // TODO: SolveByEdgeDeletion can potentially delete multiple edges at each iteration if they are not present in the shortest path
+        // so by that way we won't get the marginals for all possible marginals, however we do need all marginals because in the 
+        // subsequent iterations some unpopulated max potential values would be needed if now these values are the values of the 
+        // shortest path due to reparameterization of the linear potentials. This function should not be used until this issue is addressed. So:
+        assert(false);
+
+        //TODO: Only seeing the tree Max pot value is not going to work, we need to see the marginals for ALL possible paths,
+        ShortestPathTreeInChain spTree = FindAndInitializeSPTree();
+        REAL treeMaxPotValue = spTree.GetMaxPotValueInTree().maxPotValue;
+        INDEX currentMaxPotIndex = max_potential_marginals_.size() - 1;
+
+        if (InsertMarginal<false>(treeMaxPotValue, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0)))
+            currentMaxPotIndex--;
+
+        for (int i = MaxPotsSortingOrder.size() - 1; i >= 0; i--)
+        {   
+            auto currentMaxPotEdge = MaxPotentials1D[MaxPotsSortingOrder[i]];
+            bool wasTreeEdge = spTree.CheckAndPopMaxPotInTree(
+                currentMaxPotEdge.n1 + 1, currentMaxPotEdge.l1, currentMaxPotEdge.n2 + 1, currentMaxPotEdge.l2, currentMaxPotEdge.value); // +1 due to source node.
+            spTree.RemovePossibleEdge(currentMaxPotEdge.n1 + 1, currentMaxPotEdge.l1, currentMaxPotEdge.l2);
+
+            if (!wasTreeEdge)
             {
-                assert(false);
+                if (InsertMarginal<false>(currentMaxPotEdge.value, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0)))
+                    currentMaxPotIndex--;
             }
-            template<typename EXTERNAL_SOLVER>
-            void convert_primal(EXTERNAL_SOLVER& s)
+            else
             {
-                assert(false);
-            } 
+                std::priority_queue<AffectedVertex> locallyAffectedPQueue;
+                std::unordered_set<std::array<INDEX, 2>> locallyAffectedVertices = spTree.GetLocallyAffectedNodes();
+                for (auto const& currentAffectedNode : locallyAffectedVertices)
+                {   
+                    spTree.SetStatus(currentAffectedNode[0], currentAffectedNode[1], 0);    //mark as open
+                    INDEX bestParentLabel;
+                    REAL bestParentMaxPotValue; 
+                    REAL bestParentDistance = std::numeric_limits<REAL>::max();
+                    for (INDEX prevLabel = 0; prevLabel < NumLabels[currentAffectedNode[0] - 2]; prevLabel++)
+                    {
+                        REAL currentLinearPot = 0;
+                        REAL currentMaxPot = std::numeric_limits<REAL>::lowest();
+                        if (currentAffectedNode[0] - 2 < NumNodes - 2)
+                        {
+                            currentLinearPot = LinearPairwisePotentials(currentAffectedNode[0] - 2, prevLabel, currentAffectedNode[1]);
+                            currentMaxPot = MaxPairwisePotentials(currentAffectedNode[0] - 2, prevLabel, currentAffectedNode[1]);
+                        }
 
-            INDEX& solution(const std::size_t i) 
-            {
-                assert(i < solution_.size()); 
-                return solution_[i]; 
-            }
+                        if (locallyAffectedVertices.count({currentAffectedNode[0] - 1, prevLabel}) > 0 ||
+                            spTree.isEdgeDeleted(currentAffectedNode[0] - 1, prevLabel, currentAffectedNode[1])
+                            || !spTree.GetStatusOfNode(currentAffectedNode[0] - 1, prevLabel))
+                            continue;
 
-            INDEX solution(const std::size_t i) const 
-            {
-                assert(i < solution_.size());
-                const bool labels_computed = *std::max_element(solution_.begin(), solution_.end()) < std::numeric_limits<std::size_t>::max();
-                // assert(labels_computed); //TODO: Turning off for primal propagation, this is being handled outside i.e.(<dim())
-                return solution_[i]; 
-            }
+                        REAL db = spTree.GetDistance(currentAffectedNode[0] - 1, prevLabel); // parent distance
 
-            void set_max_potential_index(const std::size_t index) const
-            {
-                assert(max_potential_marginals_valid_);
-                if (max_potential_index_ == index)
+                        REAL newDistance = db + currentLinearPot;
+                        if (newDistance < bestParentDistance)
+                        {
+                            bestParentLabel = prevLabel;
+                            bestParentDistance = newDistance;
+                            bestParentMaxPotValue = currentMaxPot;
+                        }
+                    }
+
+                    if (bestParentDistance < std::numeric_limits<REAL>::max()) //TODO Replace by max
+                    {
+                        REAL currentDistance = spTree.GetDistance(currentAffectedNode[0], currentAffectedNode[1]);
+                        locallyAffectedPQueue.push({currentAffectedNode[0], currentAffectedNode[1], bestParentLabel, bestParentDistance - currentDistance, bestParentDistance, bestParentMaxPotValue});
+                    }
+                }
+
+                //STEP 3:
+                std::unordered_set<std::array<INDEX, 2>> toRemoveFromQueue;
+                while (locallyAffectedPQueue.size() > 0)
+                {
+                    AffectedVertex bestVertex = locallyAffectedPQueue.top();
+                    locallyAffectedPQueue.pop();
+
+                    if (toRemoveFromQueue.count({bestVertex.n, bestVertex.l}) > 0)
+                        continue;
+                    
+                    spTree.SetParent(bestVertex.n, bestVertex.l, bestVertex.parentLabel, bestVertex.newDistance, bestVertex.maxPot);
+
+                    std::unordered_set<std::array<INDEX, 2>> descendants;
+                    spTree.GetDescendants(bestVertex.n, bestVertex.l, descendants);
+                    for (const auto& currentDesc : descendants)
+                    {
+                        if (currentDesc[0] != bestVertex.n || currentDesc[1] != bestVertex.l)
+                            spTree.IncreaseDistance(currentDesc[0], currentDesc[1], bestVertex.delta);
+
+                        spTree.SetStatus(currentDesc[0], currentDesc[1], 1); 
+                        toRemoveFromQueue.insert({currentDesc[0], currentDesc[1]});
+                    }
+                    // Relax outgoing edges of just consolidated vertices.
+                    for (const auto& currentDesc : descendants)
+                    {
+                        INDEX nextNode = currentDesc[0] + 1;
+                        if (nextNode > NumNodes)
+                            continue;  
+                        
+                        for (INDEX nextLabel = 0; nextLabel < NumLabels[nextNode - 1]; nextLabel++)
+                        {
+                            REAL linearPotentialValue = 0;
+                            if (currentDesc[0] - 1 < NumNodes - 2)
+                            {
+                                REAL linearPotentialValue = LinearPairwisePotentials(currentDesc[0] - 1, currentDesc[1], nextLabel);
+                            }
+                            
+                            if (spTree.GetStatusOfNode(nextNode, nextLabel) ||
+                            spTree.isEdgeDeleted(currentDesc[0], currentDesc[1], nextLabel))
+                                continue;
+                            
+                            REAL newDistance = spTree.GetDistance(currentDesc[0], currentDesc[1]) + linearPotentialValue;
+                            REAL delta = newDistance - spTree.GetDistance(nextNode, nextLabel);
+                            locallyAffectedPQueue.push({nextNode, nextLabel, currentDesc[1], delta, newDistance});
+                        }
+                    }                            
+                }
+
+                if (!spTree.CheckPathToTerminal())
                     return;
 
-                max_potential_index_ = index;
-                solutionObjective = std::numeric_limits<std::size_t>::max();
-                std::fill(solution_.begin(), solution_.end(), std::numeric_limits<INDEX>::max());
-
-                //solution_ = ComputeSolution(max_potential_index_, true);
-                //solutionObjective = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
+                if (InsertMarginal<false>(spTree.GetMaxPotValueInTree().maxPotValue, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0)))
+                    currentMaxPotIndex--;                      
             }
-
-            std::size_t max_potential_index() const 
-            {
-                return max_potential_index_;
-            }
-        
-            std::array<REAL,3>& max_potential_marginal(const std::size_t i) 
-            {
-                assert(i < max_potential_marginals_.size()); 
-                assert(max_potential_marginals_valid_);
-                return max_potential_marginals_[i]; 
-            }
-            std::array<REAL,3> max_potential_marginal(const std::size_t i) const 
-            {
-                assert(i < max_potential_marginals_.size());
-                assert(max_potential_marginals_valid_);
-                return max_potential_marginals_[i];
-            }
-
-            std::vector<std::array<REAL,3>> max_potential_marginals() const 
-            {
-                return max_potential_marginals_;
-            }
-
-            void ComputeMaxPotentialIndexFromSolution() const {
-                REAL maxPotValueInSolution = std::numeric_limits<REAL>::lowest();
-                for (INDEX n1 = 0; n1 < solution_.size() - 1; n1++) {
-                    if (solution_[n1] == std::numeric_limits<INDEX>::max() || 
-                        solution_[n1 + 1] == std::numeric_limits<INDEX>::max())
-                        return; // Solution not ready yet
-                    
-                    maxPotValueInSolution = std::max(maxPotValueInSolution, MaxPairwisePotentials(n1, solution_[n1], solution_[n1 + 1]));
-                }
-
-                for (INDEX mpIndex = 0; mpIndex < max_potential_marginals_.size(); mpIndex++) {
-                    if (maxPotValueInSolution == max_potential_marginals_[mpIndex][0]) {
-                        max_potential_index_ = mpIndex;
-                        return;
-                    }
-                }
-                assert(false); // should be able to find the max pot value of solution in marginals!
-            }
-            
-            // three_dimensional_variable_array<REAL> edge_marginals() const
-            // {
-            //     return ComputeMessagesToPairwise();
-            // }
-
-        protected:
-                std::vector<INDEX> NumLabels;
-                // primal solution
-                mutable std::vector<INDEX> solution_;
-                mutable std::size_t max_potential_index_;
-
-        private:
-            mutable std::vector<MaxPairwisePotential> MaxPotentials1D;
-            std::vector<INDEX> MaxPotsSortingOrder;
-            three_dimensional_variable_array<REAL> MaxPairwisePotentials;
-            mutable std::vector<std::array<REAL,3>> max_potential_marginals_; // (i) max potential, (ii) minimum linear potential, (iii) cost of configuration 
-            mutable bool max_potential_marginals_valid_ = false;
-            mutable bool MaxPotMarginalsInitialized = false;
-            INDEX ChainIndex;
-
-            bool UseEdgeDeletion;
-
-            int NumNodes;
-            mutable REAL solutionObjective = std::numeric_limits<std::size_t>::max();
-
-            // This function will only compute the marginals, not the solution objective nor the primal solution.
-            void Solve() const
-            {
-                if (UseEdgeDeletion)
-                    SolveByEdgeDeletion();
-                else
-                    SolveByEdgeAddition();
-
-                MaxPotMarginalsInitialized = true;
-                max_potential_marginals_valid_ = true;
-            }
-
-            void InsertTerminalNode()
-            {
-                INDEX lastNodeNumStates = NumLabels[NumNodes - 1];
-                for (int l1 = 0; l1 < lastNodeNumStates; l1++)
-                {
-                    MaxPairwisePotential currentPot;
-                    currentPot.n1 = NumNodes - 1;
-                    currentPot.n2 = NumNodes;
-                    currentPot.l1 = l1;
-                    currentPot.l2 = 0;
-                    currentPot.value = std::numeric_limits<REAL>::lowest();
-                    MaxPotentials1D.push_back(currentPot);
-                }
-                NumLabels.push_back(1); // Terminal Node has one label
-                NumNodes = NumNodes + 1;
-            }
-
-            void RemoveTerminalNode()
-            {
-                for (int currentEdgeToRemove = MaxPotentials1D.size() - 1; currentEdgeToRemove >= 0; currentEdgeToRemove--)
-                {
-                    if (MaxPotentials1D[currentEdgeToRemove].n2 < NumNodes - 1)
-                        break;
-
-                    MaxPotentials1D.erase(MaxPotentials1D.begin() + currentEdgeToRemove);
-                }
-
-                NumNodes = NumNodes - 1;
-                NumLabels.pop_back();
-            }
-
-            INDEX GetBestMarginal() const
-            {
-                assert(max_potential_marginals_valid_);
-                REAL bestCost = std::numeric_limits<std::size_t>::max();
-                INDEX bestIndex;
-
-                for (INDEX currentMaxPotIndex = 0; currentMaxPotIndex < max_potential_marginals_.size(); ++currentMaxPotIndex)
-                {
-                    auto currentMarginal = max_potential_marginals_[currentMaxPotIndex];
-                    auto currentCost = currentMarginal[0] + currentMarginal[1] + currentMarginal[2];
-                    if (currentCost < bestCost)
-                    {
-                        bestIndex = currentMaxPotIndex;
-                        bestCost = currentCost;
-                    }
-                }
-                return bestIndex;
-            }
-            
-            // Computes the primal solution.
-            std::vector<INDEX> ComputeSolution(std::size_t maxPotIndex, bool force = false) const
-            {
-                assert(max_potential_marginals_valid_);
-                REAL maxPotThreshold = max_potential_marginals_[maxPotIndex][0];
-                ShortestPathTreeInChain spTree = FindAndInitializeSPTree(maxPotThreshold, force);
-                assert(std::abs(spTree.GetCurrentPathCost() - max_potential_marginals_[maxPotIndex][1]) <= eps);
-                INDEX currentLabel = 0; // for terminal node;
-                std::vector<INDEX> solution(NumNodes - 1);
-                for (int currentNodeToBackTrack = NumNodes - 1; currentNodeToBackTrack >= 1; currentNodeToBackTrack--) // Exclude source node.
-                {
-                    solution[currentNodeToBackTrack - 1] = spTree.GetParentLabel(currentNodeToBackTrack + 1, currentLabel);
-                    currentLabel = solution[currentNodeToBackTrack - 1]; 
-                }
-                auto solObj = PathSolutionObjective(solution);
-
-                assert(solObj[0] <= maxPotThreshold); // TODO: Maybe it found a solution with same linear cost but lower max pot value
-                // ideally, this situation should not occur for the optimal solution, i.e. no need to increase the max pot threshold if lower 
-                // threshold still gives same linear cost. 
-                // Practically, this can happen when primal is being propagated from unary -> pairwise -> chains -> graph, and we choose a max pot value
-                // more than required.
-                assert(!force || std::abs(solObj[0] - maxPotThreshold) <= eps);
-                assert(std::abs(solObj[1] -  max_potential_marginals_[maxPotIndex][1]) <= eps);
-                return solution;
-            }
-
-            std::array<REAL, 2> PathSolutionObjective(std::vector<INDEX> sol) const
-            {
-                REAL maxPotValue = std::numeric_limits<REAL>::lowest();
-                REAL linearCost = 0;
-                for (int n1 = 0; n1 < sol.size() - 1; n1++)
-                {
-                    maxPotValue = std::max(maxPotValue, MaxPairwisePotentials(n1, sol[n1], sol[n1 + 1]));
-                    linearCost += LinearPairwisePotentials(n1, sol[n1], sol[n1 + 1]);
-                }
-                return {maxPotValue, linearCost};
-            }
-
-            void SolveByEdgeAddition() const
-            {
-                REAL bestSolutionCost = INFINITY;
-                std::vector<std::vector<REAL> > distanceFromSource(NumNodes);
-                REAL initialValue = 0;
-                for (INDEX i = 0 ; i < NumNodes ; i++ )
-                {
-                    if (i > 0)
-                        initialValue = std::numeric_limits<REAL>::max();
-
-                    distanceFromSource[i].resize(NumLabels[i], initialValue);
-                }
-
-                INDEX currentMaxPotIndex = 0;
-                for(const auto& currentEdgeToInsert : MaxPotsSortingOrder)
-                {
-                    bool foundPath = UpdateDistances(currentEdgeToInsert, distanceFromSource, MaxPotentials1D[currentEdgeToInsert].value);
-
-                    REAL currentLinearCost =  distanceFromSource[NumNodes - 1][0]; 
-
-                    //TODO: Storing ALL possible max potentials, even the ones which are not feasible!                    
-                    if (currentLinearCost == std::numeric_limits<REAL>::max())
-                       continue; 
-
-                    // Insert the marginal, and do not increment the index if the max pot was already present
-                    // at previous index in which case the marginal was not inserted and we only took min:
-                    if (InsertMarginal<true>(MaxPotentials1D[currentEdgeToInsert].value, currentMaxPotIndex, currentLinearCost))
-                        currentMaxPotIndex++;
-                }
-            }
-
-            bool UpdateDistances(INDEX edgeToUpdate, std::vector<std::vector<REAL> >& distanceFromSource, REAL maxPotThresh) const
-            {
-                bool reachedTerminal = false;
-                std::queue<INDEX> queue;
-                queue.push(edgeToUpdate);
-
-                while(!queue.empty())
-                {
-                    INDEX currentEdge = queue.front();
-                    queue.pop();
-                    const auto& currentMaxPot = MaxPotentials1D[currentEdge];
-                    REAL currentLinearPot = 0;
-                    const auto& n1 = currentMaxPot.n1;
-                    const auto& n2 = currentMaxPot.n2;
-                    const auto& l1 = currentMaxPot.l1;
-                    const auto& l2 = currentMaxPot.l2;
-
-                    if (n2 < NumNodes - 1) // As LinearPairwisePotentials does not contain potentials from last node to terminal node
-                        currentLinearPot = LinearPairwisePotentials(n1, l1, l2);
-                    
-                    REAL offeredDistanceTon2l2 = distanceFromSource[n1][l1] + currentLinearPot;
-                    auto currentDistanceTon2l2 = distanceFromSource[n2][l2];
-
-                    if (offeredDistanceTon2l2 >= currentDistanceTon2l2)
-                        continue;
-
-                    distanceFromSource[n2][l2] = offeredDistanceTon2l2;
-                    
-                    if (n2 == NumNodes - 1)
-                    {
-                        reachedTerminal = true;
-                        continue;
-                    }
-
-                    INDEX n3 = n2 + 1;
-
-                    // The distance of n2, l2 has been updated so add all of its immediate children to the queue to be inspected.
-                    INDEX firstEdgeToConsider = currentEdge + (NumLabels[n2] - 1 - l2) + (NumLabels[n1] - 1 - l1) * NumLabels[n2] + l2 * NumLabels[n3] + 1;
-                    for (INDEX l3 = 0, currentEdgeToConsider = firstEdgeToConsider; l3 < NumLabels[n3]; ++l3, ++currentEdgeToConsider)
-                    {
-                        // Do not consider this potential as it has not been added through sorting yet.
-                        if (MaxPotentials1D[currentEdgeToConsider].value > maxPotThresh)
-                            continue;
-                        
-                        // auto childMaxPot = MaxPotentials1D[currentEdgeToConsider];
-                        // assert(childMaxPot.l1 == l2);
-                        // assert(childMaxPot.l2 == l3); // Might fail if some of the pairwise potentials are not present thus causing jumps!
-                        queue.push(currentEdgeToConsider);
-                    }
-                }
-                return reachedTerminal;
-            }
-
-            template <bool insertEnd>
-            bool InsertMarginal(REAL maxPotValue, INDEX insertionIndex, REAL currentLinearCost) const
-            {
-                if (!MaxPotMarginalsInitialized) {
-                    if(insertEnd) {
-                        if(max_potential_marginals_.size() > 0 && max_potential_marginals_.back()[0] == maxPotValue) {
-                            max_potential_marginals_.back()[1] = std::min(max_potential_marginals_.back()[1], currentLinearCost);
-                        } else { 
-                            max_potential_marginals_.push_back({maxPotValue, currentLinearCost, 0});
-                        }
-                    }
-                    else {
-                        if(max_potential_marginals_.size() > 0 && max_potential_marginals_.front()[0] == maxPotValue) {
-                            max_potential_marginals_.front()[1] = std::min(max_potential_marginals_.front()[1], currentLinearCost);
-                        }
-                        else {
-                            max_potential_marginals_.insert(max_potential_marginals_.begin(), {maxPotValue, currentLinearCost, 0});
-                        }
-                    }
-                }
-                else {                       
-                    // Check if the current max potential value is also present in the marginals (can only be present at adjacent index as they are sorted),
-                    // if yes just take the minimum of the linear costs.
-                    INDEX adjacentIndex = insertionIndex + (insertEnd ? -1:1);
-                    if (adjacentIndex >= 0 && adjacentIndex <= max_potential_marginals_.size() - 1 &&
-                        max_potential_marginals_[adjacentIndex][0] == maxPotValue) {
-                            max_potential_marginals_[adjacentIndex][1] = std::min(max_potential_marginals_[adjacentIndex][1], currentLinearCost);
-                            return false;
-                    }
-                    
-                    assert(maxPotValue == max_potential_marginals_[insertionIndex][0]);                   
-                    max_potential_marginals_[insertionIndex][1] = currentLinearCost;
-
-                    return true;
-                }
-            }
-
-            // For primal propagation back to pairwise potentials.
-            // three_dimensional_variable_array<REAL> ComputeMessagesToPairwise() const
-            // {
-            //     std::vector<INDEX> idx(max_potential_marginals_.size());
-            //     three_dimensional_variable_array<uint8_t> edgesLocked;
-            //     auto potsDimensions = LinearPairwisePotentials.dimensions();
-            //     edgesLocked.resize(potsDimensions.begin(), potsDimensions.end(), 0);
-            //     three_dimensional_variable_array<REAL> edge_marginals;
-            //     edge_marginals.resize(potsDimensions.begin(), potsDimensions.end(), 0);
-            //     std::iota(idx.begin(), idx.end(), 0);
-            //     std::sort(idx.begin(), idx.end(), [&marginals = this->max_potential_marginals_](INDEX i1, INDEX i2) {
-            //         return marginals[i1][0] + marginals[i1][1] + marginals[i1][2] < marginals[i2][0] + marginals[i2][1] + marginals[i2][2];
-            //     });
-                
-            //     assert(idx[0] == max_potential_index_);
-            //     for (const auto& currentIdx : idx) {
-            //         auto currentSol = ComputeSolution(currentIdx);
-            //         REAL currentSlack = max_potential_marginals_[currentIdx][0] + max_potential_marginals_[currentIdx][1] + max_potential_marginals_[currentIdx][2] - solutionObjective; 
-            //         INDEX maxPossibleEdges = LinearPairwisePotentials.dim1();
-            //         assert((currentSlack >= 0) && (currentIdx != 0 || currentSlack == 0));
-
-            //         for (INDEX n1 = 0; n1 < LinearPairwisePotentials.dim1() - 1; n1++) {
-            //             INDEX l1 = currentSol[n1];
-            //             INDEX l2 = currentSol[n1 + 1];
-            //             if (edgesLocked(n1, l1, l2) == 1) 
-            //                 maxPossibleEdges--;
-            //         }
-
-            //         assert(maxPossibleEdges > 0); // There should be atleast one edge for each path which is unique to it.
-
-            //         for (INDEX n1 = 0; n1 < LinearPairwisePotentials.dim1() - 1; n1++) {
-            //             INDEX l1 = currentSol[n1];
-            //             INDEX l2 = currentSol[n1 + 1];
-            //             if (edgesLocked(n1, l1, l2) == 0) {
-            //                 edge_marginals(n1, l1, l2) = currentSlack / maxPossibleEdges;
-            //                 edgesLocked(n1, l1, l2) = 1;
-            //             }
-            //         }
-            //     }
-            //     return edge_marginals;
-            // }
-
-            std::vector<INDEX> GetPairwisePotsSortingOrder(const std::vector<MaxPairwisePotential>& pots) const
-            {
-                std::vector<INDEX> idx(pots.size());
-                std::iota(idx.begin(), idx.end(), 0);
-                std::sort(idx.begin(), idx.end(), [&pots](INDEX i1, INDEX i2) {return pots[i1].value < pots[i2].value;});
-                return idx;
-            }
-
-            ShortestPathTreeInChain FindAndInitializeSPTree(REAL maxPotThreshold = INFINITY, bool force = false) const
-            {
-                ShortestPathTreeInChain spTree(1 + NumNodes);   // Also includes source node
-                spTree.SetLabels(0, 1);
-                spTree.SetPossibleChildLabels(0, NumLabels[0]);
-                
-                for (INDEX i = 0; i < NumNodes; i++)
-                {
-                    spTree.SetLabels(i + 1, NumLabels[i]);
-
-                    if (i < NumNodes - 1)
-                        spTree.SetPossibleChildLabels(i + 1, NumLabels[i + 1]);
-                }
-
-                REAL maxValue = std::numeric_limits<REAL>::lowest();
-                
-                for (INDEX n = 0; n < NumNodes; n++)
-                {
-                    for (INDEX l = 0; l < NumLabels[n]; l++)
-                    {
-                        INDEX prevNumLabels = 1;
-                        if (n > 0)
-                            prevNumLabels = NumLabels[n - 1];
-
-                        for (INDEX prevLabel = 0; prevLabel < prevNumLabels; prevLabel++)
-                        {
-                            REAL currentLinearPot = 0;
-                            REAL currentMaxPot = std::numeric_limits<REAL>::lowest();
-                            if (n < NumNodes - 1 && n > 0)   // Source and Terminal node potentials are not present in it.
-                            {
-                                currentLinearPot = LinearPairwisePotentials(n - 1, prevLabel, l);
-                                currentMaxPot = MaxPairwisePotentials(n - 1, prevLabel, l);
-                            }
-                            
-                            if (currentMaxPot > maxPotThreshold)
-                                continue;
-
-                            if (spTree.CheckParentForShortestPath(n + 1, l, prevLabel, currentLinearPot, currentMaxPot, force))
-                                maxValue = std::max(maxValue, currentMaxPot);
-                        }
-                    }
-                }
-
-                return spTree;
-            }
-
-            void SolveByEdgeDeletion() const
-            {
-                // TODO: SolveByEdgeDeletion can potentially delete multiple edges at each iteration if they are not present in the shortest path
-                // so by that way we won't get the marginals for all possible marginals, however we do need all marginals because in the 
-                // subsequent iterations some unpopulated max potential values would be needed if now these values are the values of the 
-                // shortest path due to reparameterization of the linear potentials. This function should not be used until this issue is addressed. So:
-                assert(false);
-
-                //TODO: Only seeing the tree Max pot value is not going to work, we need to see the marginals for ALL possible paths,
-                ShortestPathTreeInChain spTree = FindAndInitializeSPTree();
-                REAL treeMaxPotValue = spTree.GetMaxPotValueInTree().maxPotValue;
-                INDEX currentMaxPotIndex = max_potential_marginals_.size() - 1;
-
-                if (InsertMarginal<false>(treeMaxPotValue, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0)))
-                    currentMaxPotIndex--;
-
-                for (int i = MaxPotsSortingOrder.size() - 1; i >= 0; i--)
-                {   
-                    auto currentMaxPotEdge = MaxPotentials1D[MaxPotsSortingOrder[i]];
-                    bool wasTreeEdge = spTree.CheckAndPopMaxPotInTree(
-                        currentMaxPotEdge.n1 + 1, currentMaxPotEdge.l1, currentMaxPotEdge.n2 + 1, currentMaxPotEdge.l2, currentMaxPotEdge.value); // +1 due to source node.
-                    spTree.RemovePossibleEdge(currentMaxPotEdge.n1 + 1, currentMaxPotEdge.l1, currentMaxPotEdge.l2);
-
-                    if (!wasTreeEdge)
-                    {
-                        if (InsertMarginal<false>(currentMaxPotEdge.value, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0)))
-                            currentMaxPotIndex--;
-                    }
-                    else
-                    {
-                        std::priority_queue<AffectedVertex> locallyAffectedPQueue;
-                        std::unordered_set<std::array<INDEX, 2>> locallyAffectedVertices = spTree.GetLocallyAffectedNodes();
-                        for (auto const& currentAffectedNode : locallyAffectedVertices)
-                        {   
-                            spTree.SetStatus(currentAffectedNode[0], currentAffectedNode[1], 0);    //mark as open
-                            INDEX bestParentLabel;
-                            REAL bestParentMaxPotValue; 
-                            REAL bestParentDistance = std::numeric_limits<REAL>::max();
-                            for (INDEX prevLabel = 0; prevLabel < NumLabels[currentAffectedNode[0] - 2]; prevLabel++)
-                            {
-                                REAL currentLinearPot = 0;
-                                REAL currentMaxPot = std::numeric_limits<REAL>::lowest();
-                                if (currentAffectedNode[0] - 2 < NumNodes - 2)
-                                {
-                                    currentLinearPot = LinearPairwisePotentials(currentAffectedNode[0] - 2, prevLabel, currentAffectedNode[1]);
-                                    currentMaxPot = MaxPairwisePotentials(currentAffectedNode[0] - 2, prevLabel, currentAffectedNode[1]);
-                                }
-
-                                if (locallyAffectedVertices.count({currentAffectedNode[0] - 1, prevLabel}) > 0 ||
-                                    spTree.isEdgeDeleted(currentAffectedNode[0] - 1, prevLabel, currentAffectedNode[1])
-                                    || !spTree.GetStatusOfNode(currentAffectedNode[0] - 1, prevLabel))
-                                    continue;
- 
-                                REAL db = spTree.GetDistance(currentAffectedNode[0] - 1, prevLabel); // parent distance
-
-                                REAL newDistance = db + currentLinearPot;
-                                if (newDistance < bestParentDistance)
-                                {
-                                    bestParentLabel = prevLabel;
-                                    bestParentDistance = newDistance;
-                                    bestParentMaxPotValue = currentMaxPot;
-                                }
-                            }
-
-                            if (bestParentDistance < std::numeric_limits<REAL>::max()) //TODO Replace by max
-                            {
-                                REAL currentDistance = spTree.GetDistance(currentAffectedNode[0], currentAffectedNode[1]);
-                                locallyAffectedPQueue.push({currentAffectedNode[0], currentAffectedNode[1], bestParentLabel, bestParentDistance - currentDistance, bestParentDistance, bestParentMaxPotValue});
-                            }
-                        }
-
-                        //STEP 3:
-                        std::unordered_set<std::array<INDEX, 2>> toRemoveFromQueue;
-                        while (locallyAffectedPQueue.size() > 0)
-                        {
-                            AffectedVertex bestVertex = locallyAffectedPQueue.top();
-                            locallyAffectedPQueue.pop();
-
-                            if (toRemoveFromQueue.count({bestVertex.n, bestVertex.l}) > 0)
-                                continue;
-                            
-                            spTree.SetParent(bestVertex.n, bestVertex.l, bestVertex.parentLabel, bestVertex.newDistance, bestVertex.maxPot);
-
-                            std::unordered_set<std::array<INDEX, 2>> descendants;
-                            spTree.GetDescendants(bestVertex.n, bestVertex.l, descendants);
-                            for (const auto& currentDesc : descendants)
-                            {
-                                if (currentDesc[0] != bestVertex.n || currentDesc[1] != bestVertex.l)
-                                    spTree.IncreaseDistance(currentDesc[0], currentDesc[1], bestVertex.delta);
-
-                                spTree.SetStatus(currentDesc[0], currentDesc[1], 1); 
-                                toRemoveFromQueue.insert({currentDesc[0], currentDesc[1]});
-                            }
-                            // Relax outgoing edges of just consolidated vertices.
-                            for (const auto& currentDesc : descendants)
-                            {
-                                INDEX nextNode = currentDesc[0] + 1;
-                                if (nextNode > NumNodes)
-                                    continue;  
-                                
-                                for (INDEX nextLabel = 0; nextLabel < NumLabels[nextNode - 1]; nextLabel++)
-                                {
-                                    REAL linearPotentialValue = 0;
-                                    if (currentDesc[0] - 1 < NumNodes - 2)
-                                    {
-                                        REAL linearPotentialValue = LinearPairwisePotentials(currentDesc[0] - 1, currentDesc[1], nextLabel);
-                                    }
-                                    
-                                    if (spTree.GetStatusOfNode(nextNode, nextLabel) ||
-                                    spTree.isEdgeDeleted(currentDesc[0], currentDesc[1], nextLabel))
-                                        continue;
-                                    
-                                    REAL newDistance = spTree.GetDistance(currentDesc[0], currentDesc[1]) + linearPotentialValue;
-                                    REAL delta = newDistance - spTree.GetDistance(nextNode, nextLabel);
-                                    locallyAffectedPQueue.push({nextNode, nextLabel, currentDesc[1], delta, newDistance});
-                                }
-                            }                            
-                        }
-
-                        if (!spTree.CheckPathToTerminal())
-                            return;
-
-                        if (InsertMarginal<false>(spTree.GetMaxPotValueInTree().maxPotValue, currentMaxPotIndex, spTree.GetDistance(NumNodes, 0)))
-                            currentMaxPotIndex--;                      
-                    }
-                }
-            }
-    };
+        }
+    }
+};
 
 class LabelStateSpace {
     private:
@@ -1230,7 +1225,7 @@ class LabelStateSpace {
                 {
                     auto itr = potentials.find(MaxPotentialLowerBound);
                     assert(itr != potentials.end());
-                    itr->second = fmin(linearPot, itr->second);
+                    itr->second = std::min(linearPot, itr->second);
                 }
             }
 
@@ -1241,7 +1236,7 @@ class LabelStateSpace {
                 {
                     if (lbKey->first == maxPot) // Current key already exists in the map
                     {
-                        lbKey->second = fmin(linearPot, lbKey->second);
+                        lbKey->second = std::min(linearPot, lbKey->second);
                         return;
                     }
 
@@ -1321,9 +1316,9 @@ class LabelStateSpace {
 
 };
 
-class max_potential_on_tree {
+class max_potential_on_tree_dynamic_prog {
     public:       
-        max_potential_on_tree(const three_dimensional_variable_array<REAL>& maxPairwisePotentials, const three_dimensional_variable_array<REAL>& linearPairwisePotentials,
+        max_potential_on_tree_dynamic_prog(const three_dimensional_variable_array<REAL>& maxPairwisePotentials, const three_dimensional_variable_array<REAL>& linearPairwisePotentials,
          const std::vector<INDEX>& numLabels, const std::vector<std::array<INDEX, 2>>& messagePassingSchedule, const std::vector<INDEX>& numEdgesForNode)
         :
             LinearPairwisePotentials(linearPairwisePotentials),
@@ -1362,7 +1357,7 @@ class max_potential_on_tree {
 
         REAL LowerBound() const
         {
-            ComputeSolution();
+            Solve();
             return solutionObjective;
             // compute optimal solution and return its cost
         }
@@ -1380,6 +1375,7 @@ class max_potential_on_tree {
 
         void MaximizePotentialAndComputePrimal() 
         {
+            Solve();
             ComputeSolution();
             // compute optimal solution and store it
         }
@@ -1519,8 +1515,10 @@ class max_potential_on_tree {
             {
                 // Assuming that the 2D matrix of potentials for each edge is stored always in the order in which tail always counts as l2 and head as l1.
                 // TODO: Maybe do not need isReverse if the above condition is satisfied?
-                assert(MaxPairwisePotentials.dim3(edgeIndex) == tailMessages.size());
-                assert(LinearPairwisePotentials.dim3(edgeIndex) == tailMessages.size()); 
+                assert(!isReverse && MaxPairwisePotentials.dim2(edgeIndex) == tailMessages.size() || 
+                        isReverse && MaxPairwisePotentials.dim3(edgeIndex) == tailMessages.size());
+                assert(!isReverse && LinearPairwisePotentials.dim2(edgeIndex) == tailMessages.size() ||
+                        isReverse && LinearPairwisePotentials.dim3(edgeIndex) == tailMessages.size()); 
 
                 REAL edgeMaxPot = !isReverse ? MaxPairwisePotentials(edgeIndex, lt, lh) : MaxPairwisePotentials(edgeIndex, lh, lt);
                 REAL edgeLinearPot = !isReverse ? LinearPairwisePotentials(edgeIndex, lt, lh) : LinearPairwisePotentials(edgeIndex, lh, lt);
@@ -1736,8 +1734,192 @@ class max_potential_on_tree {
         }
 
 };
-REAL max_potential_on_tree::MaxPotentialLowerBoundForAllTrees = std::numeric_limits<REAL>::lowest(); //TODO: Will need to be re-initialized for a new instance.
+REAL max_potential_on_tree_dynamic_prog::MaxPotentialLowerBoundForAllTrees = std::numeric_limits<REAL>::lowest(); //TODO: Will need to be re-initialized for a new instance.
 
+class max_potential_on_tree_iterative : public max_potential_on_chain {
+public:
+// Assuming that the pairwise potentials are stored in the same order as messagePassingSchedule(mps), where edge \in mps points from tail to head
+// Assuming that l1 = three_dimensional_variable_array.dim2(edge) corresponds to labels of node min(edge[0], edge[1]) and l2 to node labels of other node.
+    max_potential_on_tree_iterative(const three_dimensional_variable_array<REAL>& maxPairwisePotentials, const three_dimensional_variable_array<REAL>& linearPairwisePotentials,  
+        const std::vector<INDEX>& numLabels, const std::vector<std::array<INDEX, 2>>& messagePassingSchedule)
+    {
+        LinearPairwisePotentials = linearPairwisePotentials;
+        MaxPairwisePotentials = maxPairwisePotentials;
+        NumLabels = numLabels;
+        NumNodes = numLabels.size();
+        MessagePassingSchedule = messagePassingSchedule;
+        assert(maxPairwisePotentials.dim1() + 1 == numLabels.size()); 
+        assert(maxPairwisePotentials.dim1() == linearPairwisePotentials.dim1());
+        solution_.resize(NumNodes);
+        INDEX edgeIndex = 0;
+        for (const auto& currentEdge : messagePassingSchedule){
+            assert(maxPairwisePotentials.dim2(edgeIndex) == linearPairwisePotentials.dim2(edgeIndex) &&
+                   maxPairwisePotentials.dim3(edgeIndex) == linearPairwisePotentials.dim3(edgeIndex));
+
+            for(INDEX l1=0; l1<maxPairwisePotentials.dim2(edgeIndex); ++l1) {
+                for(INDEX l2=0; l2<maxPairwisePotentials.dim3(edgeIndex); ++l2) {
+                    if (!isReverse(edgeIndex))
+                        MaxPotentials1D.push_back( {maxPairwisePotentials(edgeIndex,l1,l2), edgeIndex, currentEdge[0], currentEdge[1], l1, l2} );
+                    else
+                        MaxPotentials1D.push_back( {maxPairwisePotentials(edgeIndex,l1,l2), edgeIndex, currentEdge[0], currentEdge[1], l2, l1} );
+                }
+            }
+            edgeIndex++;
+        }
+        MaxPotsSortingOrder = GetPairwisePotsSortingOrder(MaxPotentials1D);
+        BuildAdjacency();
+        init_primal();
+    }
+    
+    void ComputeMaxPotentialIndexFromSolution() const {
+        assert(false); // Fix for trees.
+        REAL maxPotValueInSolution = std::numeric_limits<REAL>::lowest();
+        for (INDEX n1 = 0; n1 < solution_.size() - 1; n1++) {
+            if (solution_[n1] == std::numeric_limits<INDEX>::max() || 
+                solution_[n1 + 1] == std::numeric_limits<INDEX>::max())
+                return; // Solution not ready yet
+            
+            maxPotValueInSolution = std::max(maxPotValueInSolution, MaxPairwisePotentials(n1, solution_[n1], solution_[n1 + 1]));
+        }
+
+        for (INDEX mpIndex = 0; mpIndex < max_potential_marginals_.size(); mpIndex++) {
+            if (maxPotValueInSolution == max_potential_marginals_[mpIndex][0]) {
+                max_potential_index_ = mpIndex;
+                return;
+            }
+        }
+        assert(false); // should be able to find the max pot value of solution in marginals!
+    }
+
+protected:
+    std::vector<std::array<INDEX, 2>> MessagePassingSchedule;
+    struct NodeAdjacency {
+        INDEX OutgoingEdge = std::numeric_limits<INDEX>::max(); //single outgoing edge index, (cannot be more than one outgoing edge)
+        std::vector<INDEX> IncomingEdges; // its incoming edge indices
+    };
+
+    std::vector<NodeAdjacency> NodeIncidentEdges;
+
+    // Given message passing order, populates outgoing edge index -1 corresponds to root node
+    void BuildAdjacency() {
+        NodeIncidentEdges.resize(NumNodes);
+        INDEX edgeIndex = 0;
+        for (const auto& currentEdge : MessagePassingSchedule) {
+            NodeIncidentEdges[currentEdge[0]].OutgoingEdge = edgeIndex;
+            NodeIncidentEdges[currentEdge[1]].IncomingEdges.push_back(edgeIndex);
+            edgeIndex++;
+        }
+
+        // Validation:
+        bool rootFound = false;
+        for (INDEX n = 0; n < NodeIncidentEdges.size(); n++)
+        {
+            if (NodeIncidentEdges[n].OutgoingEdge < std::numeric_limits<INDEX>::max())
+                continue;
+            
+            assert(!rootFound);
+            rootFound = true;
+        }
+        assert(rootFound);
+    }
+
+    void Solve() const {
+        REAL bestSolutionCost = INFINITY;
+        std::vector<std::vector<std::vector<REAL>>> distanceFromSource(NumNodes); // node index, label index, incoming edge index
+        REAL initialValue = 0; // For leaf nodes
+        for (INDEX i = 0 ; i < NumNodes ; i++) {
+            if (NodeIncidentEdges[i].IncomingEdges.size() > 0) // not leaf
+                initialValue = std::numeric_limits<REAL>::max();
+            else
+                initialValue = 0;
+
+            distanceFromSource[i].resize(NumLabels[i]);
+            auto numIncoming = NodeIncidentEdges[i].IncomingEdges.size(); 
+            if (numIncoming < 1) numIncoming = 1; // For leaves
+
+            for (INDEX l = 0; l < distanceFromSource[i].size(); l++)
+                distanceFromSource[i][l].resize(numIncoming, initialValue);
+        }
+
+        INDEX currentMaxPotIndex = 0;
+        for(const auto& currentEdgeToInsert : MaxPotsSortingOrder)
+        {
+            REAL rootCost = UpdateDistances(MaxPotentials1D[currentEdgeToInsert], distanceFromSource, MaxPotentials1D[currentEdgeToInsert].value);
+
+            if (rootCost == std::numeric_limits<REAL>::max())
+                continue; 
+
+            // Insert the marginal, and do not increment the index if the max pot was already present
+            // at previous index in which case the marginal was not inserted and we only took min:
+            if (InsertMarginal<true>(MaxPotentials1D[currentEdgeToInsert].value, currentMaxPotIndex, rootCost))
+                currentMaxPotIndex++;
+        }
+        MaxPotMarginalsInitialized = true;
+        max_potential_marginals_valid_ = true;
+    }
+
+    REAL UpdateDistances(MaxPairwisePotentialEntry newElement, std::vector<std::vector<std::vector<REAL>>>& distanceFromSource, REAL maxPotThresh) const
+    {
+        REAL bestRootCost = std::numeric_limits<REAL>::max();
+        std::queue<MaxPairwisePotentialEntry> queue;
+        queue.push(newElement);
+
+        while(!queue.empty())
+        {
+            auto currentElement = queue.front();
+            queue.pop();
+            const auto& edgeIndex = currentElement.edgeIndex;
+            const auto& n1 = currentElement.n1;
+            const auto& n2 = currentElement.n2;
+            const auto& l1 = currentElement.l1;
+            const auto& l2 = currentElement.l2;
+            REAL worstDistanceToN1L1 = *std::max_element(distanceFromSource[n1][l1].begin(), distanceFromSource[n1][l1].end());
+            if (worstDistanceToN1L1 >= std::numeric_limits<REAL>::max())
+                continue; // There is no incoming path from atleast one branch
+
+            REAL currentLinearPot = isReverse(edgeIndex) ? LinearPairwisePotentials(edgeIndex, l2, l1) : LinearPairwisePotentials(edgeIndex, l1, l2);
+            
+            // Sum up the cost of reaching n2, l2 from all of the incoming branches of n1, l1:
+            REAL offeredDistanceToN2L2 = std::accumulate(distanceFromSource[n1][l1].begin(), distanceFromSource[n1][l1].end(), currentLinearPot);
+            auto incomingEdgeIndexN2L2It = std::find(NodeIncidentEdges[n2].IncomingEdges.begin(), NodeIncidentEdges[n2].IncomingEdges.end(), edgeIndex);
+#ifndef NDEBUG 
+            assert(incomingEdgeIndexN2L2It != NodeIncidentEdges[n2].IncomingEdges.end()); // Should be able to find
+#endif
+            INDEX incomingEdgeIndexN2L2 = std::distance(NodeIncidentEdges[n2].IncomingEdges.begin(), incomingEdgeIndexN2L2It);
+            auto currentDistanceToN2L2 = distanceFromSource[n2][l2][incomingEdgeIndexN2L2];
+            if (offeredDistanceToN2L2 >= currentDistanceToN2L2)
+                continue;
+
+            distanceFromSource[n2][l2][incomingEdgeIndexN2L2] = offeredDistanceToN2L2;
+            INDEX outgoingEdgeFromN2 = NodeIncidentEdges[n2].OutgoingEdge;
+            
+            if (outgoingEdgeFromN2 >= std::numeric_limits<INDEX>::max()) // Reached Root
+            {
+                REAL worstDistanceToRoot = *std::max_element(distanceFromSource[n2][l2].begin(), distanceFromSource[n2][l2].end());
+                if (worstDistanceToRoot >= std::numeric_limits<REAL>::max())
+                    continue;
+
+                REAL currentRootCost = std::accumulate(distanceFromSource[n2][l2].begin(), distanceFromSource[n2][l2].end(), 0.0);
+                bestRootCost = std::min(bestRootCost, currentRootCost);
+                continue;
+            }
+
+            INDEX n3 = MessagePassingSchedule[outgoingEdgeFromN2][1];
+            
+            for (INDEX l3 = 0; l3 < NumLabels[l3]; l3++) {
+                REAL currentMaxPot = isReverse(outgoingEdgeFromN2) ? MaxPairwisePotentials(outgoingEdgeFromN2, l3, l2) : MaxPairwisePotentials(outgoingEdgeFromN2, l2, l3);
+
+                if (currentMaxPot > maxPotThresh)
+                    continue;
+                
+                queue.push({currentMaxPot, outgoingEdgeFromN2, n2, n3, l2, l3});
+            }
+        }
+        return bestRootCost;
+    }
+
+    bool isReverse(INDEX edgeIndex) const { return MessagePassingSchedule[edgeIndex][1] < MessagePassingSchedule[edgeIndex][0]; }
+};
 
 class unary_max_potential_on_chain_message {
     public:

@@ -33,10 +33,10 @@ int main()
     MaxPairwisePotentials(1,1,2) = 6;
 
     {
-        max_potential_on_tree tree = max_potential_on_tree(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule, numEdgesForNode);
+        max_potential_on_tree_dynamic_prog tree = max_potential_on_tree_dynamic_prog(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule, numEdgesForNode);
         REAL lb = tree.GetMaxPotLowerBound();
         REAL ub = tree.GetMaxPotUpperBound();
-        tree.MaximizePotentialAndComputePrimal();
+        tree.LowerBound();
         std::vector<std::array<REAL, 3>> rootMarginals = tree.max_potential_marginals();
         REAL bestSumMarginal = INFINITY;
         for (const auto& currentM : rootMarginals)
@@ -62,10 +62,10 @@ int main()
     LinearPairwisePotentials(1,1,2) = 0;
 
     {
-        max_potential_on_tree tree = max_potential_on_tree(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule, numEdgesForNode);
+        max_potential_on_tree_dynamic_prog tree = max_potential_on_tree_dynamic_prog(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule, numEdgesForNode);
         REAL lb = tree.GetMaxPotLowerBound();
         REAL ub = tree.GetMaxPotUpperBound();
-        tree.MaximizePotentialAndComputePrimal();
+        tree.LowerBound();
         std::vector<std::array<REAL, 3>> rootMarginals = tree.max_potential_marginals();
         REAL bestSumMarginal = INFINITY;
         for (const auto& currentM : rootMarginals)
@@ -79,10 +79,10 @@ int main()
     LinearPairwisePotentials(1,0,2) = 1.5;
 
     {
-        max_potential_on_tree tree = max_potential_on_tree(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule, numEdgesForNode);
+        max_potential_on_tree_dynamic_prog tree = max_potential_on_tree_dynamic_prog(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule, numEdgesForNode);
         REAL lb = tree.GetMaxPotLowerBound();
         REAL ub = tree.GetMaxPotUpperBound();
-        tree.MaximizePotentialAndComputePrimal();
+        tree.LowerBound();
         std::vector<std::array<REAL, 3>> rootMarginals = tree.max_potential_marginals();
         REAL bestSumMarginal = INFINITY;
         for (const auto& currentM : rootMarginals)
