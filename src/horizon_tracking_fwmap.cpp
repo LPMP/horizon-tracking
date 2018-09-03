@@ -5,11 +5,11 @@ using namespace LP_MP;
 
 int main(int argc, char** argv)
 {
-    using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
+    using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING_CHAINS>, StandardVisitor>;
     solver_type solver(argc, argv);
 
     auto input = horizon_tracking_uai_input::parse_file(solver.get_input_file());
-    construct_horizon_tracking_problem_on_grid(input, solver, solver.template GetProblemConstructor<0>());
+    construct_horizon_tracking_problem_on_grid_to_chains(input, solver, solver.template GetProblemConstructor<0>());
     order_nodes_by_label_space_cadinality(solver.template GetProblemConstructor<0>());
 
     solver.Solve();
@@ -19,12 +19,12 @@ int main(int argc, char** argv)
     auto chain_constructor = solver.template GetProblemConstructor<0>();
     auto max_potential_factors = chain_constructor.max_graph_factors();
     for(auto* f : max_potential_factors) {
-        f->send_messages_to_left<FMC_HORIZON_TRACKING::max_chain_to_max_potential_message_container>(1.0);
+        f->send_messages_to_left<FMC_HORIZON_TRACKING_CHAINS::max_chain_to_max_potential_message_container>(1.0);
     }
 
     auto max_potential_on_chain_factors = chain_constructor.max_chain_factors();
     for(auto* f : max_potential_on_chain_factors) {
-        f->send_messages_to_left<FMC_HORIZON_TRACKING::pairwise_max_message_container>(1.0);
+        f->send_messages_to_left<FMC_HORIZON_TRACKING_CHAINS::pairwise_max_message_container>(1.0);
     }
 
     // mark mrf factors
@@ -34,8 +34,8 @@ int main(int argc, char** argv)
     for (auto i = 0; i < numF; i++)
     {
         auto currentF = solver.GetLP().GetFactor(i);
-        if (dynamic_cast<FMC_HORIZON_TRACKING::UnaryFactor*>(currentF) || 
-            dynamic_cast<FMC_HORIZON_TRACKING::PairwiseFactor*>(currentF))
+        if (dynamic_cast<FMC_HORIZON_TRACKING_CHAINS::UnaryFactor*>(currentF) || 
+            dynamic_cast<FMC_HORIZON_TRACKING_CHAINS::PairwiseFactor*>(currentF))
             mrf_factors.push_back(currentF);
         else
             bottleneck_factors.push_back(currentF);

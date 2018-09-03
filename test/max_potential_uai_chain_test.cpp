@@ -13,7 +13,7 @@ int main()
 {
     // Test on 3 Node Chain:
     {
-        using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
+        using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING_CHAINS>, StandardVisitor>;
         solver_type solver(solver_options_small);
         auto input = horizon_tracking_uai_input::parse_string(chain_uai_input_small);
         construct_horizon_tracking_problem_on_grid(input, solver, solver.template GetProblemConstructor<0>());
@@ -26,8 +26,8 @@ int main()
         for (auto i = 0; i < numF; i++)
         {
             auto currentF = solver.GetLP().GetFactor(i);
-            if (dynamic_cast<FMC_HORIZON_TRACKING::UnaryFactor*>(currentF) ||
-                dynamic_cast<FMC_HORIZON_TRACKING::PairwiseFactor*>(currentF))
+            if (dynamic_cast<FMC_HORIZON_TRACKING_CHAINS::UnaryFactor*>(currentF) ||
+                dynamic_cast<FMC_HORIZON_TRACKING_CHAINS::PairwiseFactor*>(currentF))
                 factors.push_back(currentF);
         }
         test(solver.primal_cost() == std::numeric_limits<REAL>::infinity());
@@ -40,7 +40,7 @@ int main()
 
     // Test on 5 Node Chain:
     {
-        using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING>, StandardVisitor>;
+        using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING_CHAINS>, StandardVisitor>;
         solver_type solver(solver_options_medium);
         auto input = horizon_tracking_uai_input::parse_string(chain_uai_input_medium);
         construct_horizon_tracking_problem_on_grid(input, solver, solver.template GetProblemConstructor<0>());
@@ -54,8 +54,8 @@ int main()
         for (auto i = 0; i < numF; i++)
         {
             auto currentF = solver.GetLP().GetFactor(i);
-            if (dynamic_cast<FMC_HORIZON_TRACKING::UnaryFactor*>(currentF) ||
-                dynamic_cast<FMC_HORIZON_TRACKING::PairwiseFactor*>(currentF))
+            if (dynamic_cast<FMC_HORIZON_TRACKING_CHAINS::UnaryFactor*>(currentF) ||
+                dynamic_cast<FMC_HORIZON_TRACKING_CHAINS::PairwiseFactor*>(currentF))
                 factors.push_back(currentF);
         }
         test(solver.primal_cost() == std::numeric_limits<REAL>::infinity());
