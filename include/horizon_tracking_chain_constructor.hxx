@@ -3,14 +3,12 @@
 
 #include "horizon_tracking_uai_input.h"
 #include "three_dimensional_variable_array.hxx"
-#include "horizon_tracking_uai_input.h"
 #include "grid.hxx"
 
 namespace LP_MP {
 
 template<typename MRF_CONSTRUCTOR, typename MAX_CHAIN_FACTOR, typename MAX_POTENTIAL_FACTOR, typename PAIRWISE_MAX_CHAIN_MESSAGE, typename MAX_CHAIN_MAX_POTENTIAL_MESSAGE>
 class max_chain_constructor : public MRF_CONSTRUCTOR {
-
 
 public:
 using FMC = typename MRF_CONSTRUCTOR::FMC;
@@ -103,7 +101,7 @@ private:
 };
 
 template<typename SOLVER, typename HORIZON_TRACKING_CONSTRUCTOR>
-void construct_horizon_tracking_problem_on_grid(const horizon_tracking_input& input, SOLVER& solver, HORIZON_TRACKING_CONSTRUCTOR& chain_constructor)
+void construct_horizon_tracking_problem_on_grid_to_chains(const horizon_tracking_input& input, SOLVER& solver, HORIZON_TRACKING_CONSTRUCTOR& chain_constructor)
 {
     // construct mrf part
     chain_constructor.construct(input.mrf); 
