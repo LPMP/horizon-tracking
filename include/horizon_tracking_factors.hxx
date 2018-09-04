@@ -577,11 +577,10 @@ public:
         assert(max_potential_index_ != std::numeric_limits<std::size_t>::max());
         REAL objFromIndex = max_potential_marginals_[max_potential_index_][1] + max_potential_marginals_[max_potential_index_][2];
         auto objFromPath = PathSolutionObjective(solution_);
-        assert(objFromPath[0] + objFromPath[1] <= max_potential_marginals_[max_potential_index_][0] + max_potential_marginals_[max_potential_index_][1]);
-        assert(objFromPath[0] <= max_potential_marginals_[max_potential_index_][0]);
-        //assert(std::abs(objFromPath[0] -  max_potential_marginals_[max_potential_index_][0]) <= eps);
+        assert(objFromPath[0] <=  max_potential_marginals_[max_potential_index_][0]);
+        // assert(std::abs(objFromPath[0] -  max_potential_marginals_[max_potential_index_][0]) <= eps);
+        // assert(objFromPath[0] + objFromPath[1] <= max_potential_marginals_[max_potential_index_][0] + max_potential_marginals_[max_potential_index_][1]);
         // TODO: Measures the tightness of primal solution coming from left and primal solution coming from right.
-        // assert(std::abs(objFromPath[1] -  max_potential_marginals_[max_potential_index_][1]) <= eps);
         return objFromIndex;
         // return cost of current solution
     }
@@ -695,14 +694,19 @@ public:
         return max_potential_marginals_;
     }
 
-    virtual void ComputeMaxPotentialIndexFromSolution() const {        
+    void SetMaxPotentialIndexFromSolution() const {        
         std::array<REAL, 2> objFromPath = PathSolutionObjective(solution_);
         if (objFromPath[0] == std::numeric_limits<REAL>::max())
             return;
 
         for (INDEX mpIndex = 0; mpIndex < max_potential_marginals_.size(); mpIndex++) {
-            if (objFromPath[0] == max_potential_marginals_[mpIndex][0] && objFromPath[1] == max_potential_marginals_[mpIndex][1]) {
+            if (objFromPath[0] == max_potential_marginals_[mpIndex][0]) {
                 max_potential_index_ = mpIndex;
+#ifndef NDEBUG
+                assert(objFromPath[1] >= max_potential_marginals_[mpIndex][1]);
+                if (objFromPath[1] != max_potential_marginals_[mpIndex][1])
+                    std::cout<<"Chain solution weaker than possible!" <<std::endl;
+#endif
                 return;
             }
         }
@@ -1955,18 +1959,23 @@ protected:
             if (solution[n] == std::numeric_limits<INDEX>::max())
                 solution[n] = std::distance(messages[n].begin(), std::min_element(messages[n].begin(), messages[n].end()));
         }
+#ifndef NDEBUG 
+        auto solutionObj = PathSolutionObjective(solution);
+        assert(solutionObj[0] <= maxPotThresh);
+        assert(std::abs(solutionObj[0] + solutionObj[1]  - (max_potential_marginals_[maxPotIndex][0] + max_potential_marginals_[maxPotIndex][1])) <= eps);
+#endif 
         return solution;
     }
 
     REAL ComputeMessageValue(const std::vector<REAL>& tailMessages, INDEX edgeIndex, 
-    INDEX lh, bool oppositeDirection, REAL maxPotThresh, bool labelTail = -1) const
+    INDEX lh, bool oppositeDirection, REAL maxPotThresh, INDEX labelTail = std::numeric_limits<INDEX>::max()) const
     {
         REAL bestMessageValue = INFINITY;
         INDEX bestlt;
         INDEX ltStart = 0;
         INDEX ltEnd = tailMessages.size() - 1;
         
-        if (labelTail >= 0)
+        if (labelTail < std::numeric_limits<INDEX>::max())
         {
             ltStart = labelTail;
             ltEnd = labelTail;
@@ -2190,14 +2199,14 @@ class pairwise_max_factor_tree_message {
             if(l.primal()[0] < l.dim1()) {
                 changed_unary_1 = (r.solution(unary_1) != l.primal()[0]);
                 r.solution(unary_1) = l.primal()[0];
-                r.ComputeMaxPotentialIndexFromSolution();
+                r.SetMaxPotentialIndexFromSolution();
             }
 
             bool changed_unary_2 = false;
             if(l.primal()[1] < l.dim2()) {
                 changed_unary_2 = (r.solution(unary_2) != l.primal()[1]);
                 r.solution(unary_2) = l.primal()[1];
-                r.ComputeMaxPotentialIndexFromSolution();
+                r.SetMaxPotentialIndexFromSolution();
             }
 
             return changed_unary_1 || changed_unary_2;

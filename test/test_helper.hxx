@@ -39,9 +39,9 @@ bool TestUAIChains(std::vector<std::string> solverOptions, std::string uaiFile, 
             factors.push_back(currentF);
     }
     test(solver.primal_cost() == std::numeric_limits<REAL>::infinity());
-    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end(), 1);
+    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end(), std::numeric_limits<INDEX>::max()-2);
     solver.RegisterPrimal();
-    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end(), 2);
+    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end(), std::numeric_limits<INDEX>::max()-1);
     solver.RegisterPrimal();
     test(solver.primal_cost() < std::numeric_limits<REAL>::max());
     test((solver.primal_cost() - expectedLb) <= eps);
@@ -104,9 +104,9 @@ bool TestUAITrees(std::vector<std::string> solverOptions, std::string uaiFile, d
             factors.push_back(currentF);
     }
     test(solver.primal_cost() == std::numeric_limits<REAL>::infinity());
-    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end(), 1);
+    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::forward>(factors.begin(), factors.end(), std::numeric_limits<INDEX>::max()-2);
     solver.RegisterPrimal();
-    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end(), 2);
+    solver.GetLP().ComputePassAndPrimal<std::vector<FactorTypeAdapter*>::iterator, Direction::backward>(factors.begin(), factors.end(), std::numeric_limits<INDEX>::max()-1);
     solver.RegisterPrimal();
     test(solver.primal_cost() < std::numeric_limits<REAL>::max());
     test((solver.primal_cost() - expectedLb) <= eps);
