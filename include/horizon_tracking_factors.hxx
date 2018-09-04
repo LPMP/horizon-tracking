@@ -672,7 +672,7 @@ public:
             return;
 
         max_potential_index_ = index;
-        solution_ = ComputeSolution(max_potential_index_);
+        solution_ = ComputeSolution(max_potential_index_); //TODO: DO OR DO NOT ?
     }
 
     INDEX max_potential_index() const 
