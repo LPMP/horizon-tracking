@@ -68,14 +68,14 @@ max_chain_factor_container* add_max_chain(ITERATOR node_var_begin, ITERATOR node
 template<typename ITERATOR>
 max_potential_factor_container* add_max_potential(ITERATOR max_chain_begin, ITERATOR max_chain_end, factor_tree<FMC>* t = nullptr)
 {
-    std::vector<std::vector<std::array<REAL,2>>> all_marginals;
+    std::vector<std::vector<max_linear_costs>> all_marginals;
     for(auto max_chain_it = max_chain_begin; max_chain_it!=max_chain_end; ++max_chain_it) {
         auto* f = (*max_chain_it)->GetFactor();
         f->MaximizePotentialAndComputePrimal();
-        std::vector<std::array<REAL,3>> current_chain_marginals = f->max_potential_marginals();
-        std::vector<std::array<REAL,2>> current_chain_marginals_max;
+        std::vector<max_linear_rep_costs> current_chain_marginals = f->max_potential_marginals();
+        std::vector<max_linear_costs> current_chain_marginals_max;
         for (auto current_marginal_item : current_chain_marginals) {
-            current_chain_marginals_max.push_back({current_marginal_item[0], current_marginal_item[1]});   // Ignoring the third column in the first iteration. 
+            current_chain_marginals_max.push_back({current_marginal_item.MaxCost, current_marginal_item.LinearCost});   // Ignoring the third column in the first iteration. 
         }
         all_marginals.push_back(current_chain_marginals_max);
     }

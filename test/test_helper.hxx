@@ -2,13 +2,14 @@
 #include "horizon_tracking.h"
 #include "solver.hxx"
 #include "LP_FWMAP.hxx"
+#include "LP_conic_bundle.hxx"
 #include <type_traits>
 
 using namespace LP_MP;
 
 bool TestUAIChains(std::vector<std::string> solverOptions, std::string uaiFile, double expectedLb) 
 {
-    using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING_CHAINS>, StandardVisitor>;
+    using solver_type = Solver<LP_subgradient_ascent<FMC_HORIZON_TRACKING_CHAINS>, StandardVisitor>;
     solver_type solver(solverOptions);
     auto input = horizon_tracking_uai_input::parse_string(uaiFile);
     construct_horizon_tracking_problem_on_grid_to_chains(input, solver, solver.template GetProblemConstructor<0>());
@@ -73,7 +74,7 @@ bool TestUAIChains(std::vector<std::string> solverOptions, std::string uaiFile, 
 
 bool TestUAITrees(std::vector<std::string> solverOptions, std::string uaiFile, double expectedLb) 
 {
-    using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING_TREES>, StandardVisitor>;
+    using solver_type = Solver<LP_subgradient_ascent<FMC_HORIZON_TRACKING_TREES>, StandardVisitor>;
     solver_type solver(solverOptions);
     auto input = horizon_tracking_uai_input::parse_string(uaiFile);
     construct_horizon_tracking_problem_on_grid_to_trees(input, solver, solver.template GetProblemConstructor<0>());

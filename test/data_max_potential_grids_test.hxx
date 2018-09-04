@@ -1031,15 +1031,15 @@ MAX-POTENTIALS
 
 std::vector<std::string> solver_options_small= {
    {"max potential small grid test"},
-   {"--maxIter"}, {"50"},
-   {"--timeout"}, {"30"}, // one minute
+   {"--maxIter"}, {"2000"},
+   {"--timeout"}, {"60"}, // half minute
    {"-v"}, {"2"}
 };
 
 std::vector<std::string> solver_options_medium = {
    {"max potential grid test"},
-   {"--maxIter"}, {"50"},
-   {"--timeout"}, {"30"}, // one minute
+   {"--maxIter"}, {"2000"},
+   {"--timeout"}, {"60"}, // half minute
    {"-v"}, {"2"}
 };
 }
