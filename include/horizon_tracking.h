@@ -27,8 +27,9 @@ struct FMC_HORIZON_TRACKING_CHAINS {
 
    using UnaryPairwiseMessageLeftContainer = MessageContainer<UnaryPairwiseMessage<Chirality::left,false>, 0, 1, message_passing_schedule::left, variableMessageNumber, 1, FMC_HORIZON_TRACKING_CHAINS, 0 >;
    using UnaryPairwiseMessageRightContainer = MessageContainer<UnaryPairwiseMessage<Chirality::right,false>, 0, 1, message_passing_schedule::left, variableMessageNumber, 1, FMC_HORIZON_TRACKING_CHAINS, 1 >;
-   using pairwise_max_message_container = MessageContainer<pairwise_max_factor_tree_message, 1, 2, message_passing_schedule::left, variableMessageNumber, variableMessageNumber, FMC_HORIZON_TRACKING_CHAINS, 2>;
-   using max_chain_to_max_potential_message_container = MessageContainer<max_factor_tree_graph_message, 2, 3, message_passing_schedule::left, 1, variableMessageNumber, FMC_HORIZON_TRACKING_CHAINS, 3>;
+   //TO ADDRESS: should it be none?
+   using pairwise_max_message_container = MessageContainer<pairwise_max_factor_tree_message, 1, 2, message_passing_schedule::none, variableMessageNumber, variableMessageNumber, FMC_HORIZON_TRACKING_CHAINS, 2>;
+   using max_chain_to_max_potential_message_container = MessageContainer<max_factor_tree_graph_message, 2, 3, message_passing_schedule::none, 1, variableMessageNumber, FMC_HORIZON_TRACKING_CHAINS, 3>;
 
    using MessageList = meta::list< UnaryPairwiseMessageLeftContainer, UnaryPairwiseMessageRightContainer, pairwise_max_message_container, max_chain_to_max_potential_message_container >;
 

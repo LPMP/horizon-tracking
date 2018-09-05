@@ -1,10 +1,12 @@
-#include "graphical_model.h"
-#include "visitors/standard_visitor.hxx"
-#include "test.h"
+#ifndef LP_MP_DATA_MAX_POTENTIALS_GRIDS_TEST_HXX
+#define LP_MP_DATA_MAX_POTENTIALS_GRIDS_TEST_HXX
+
+#include "LP_MP.h"
 
 namespace LP_MP {
 
 // UAI test input. Note: not all unaries are present, hence zero unaries must be added.
+REAL grid_uai_input_small_lb = 0.242203;
 std::string grid_uai_input_small = 
 R"(MARKOV
 4
@@ -81,6 +83,7 @@ MAX-POTENTIALS
 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 
 )";
 
+REAL grid_uai_input_3x3_lb = 0.590735;
 std::string grid_uai_input_3x3 = 
 R"(MARKOV
 9
@@ -261,6 +264,7 @@ MAX-POTENTIALS
 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 0.000000 
 )";
 
+REAL grid_uai_input_medium_lb = 4.307381;
 std::string grid_uai_input_medium = 
 R"(MARKOV
 25
@@ -793,6 +797,8 @@ MAX-POTENTIALS
 0.000000 531.079529 141.251114 137.647186 1136.386597 535.807007 0.000000 1205.565796 133.951752 126.265182 140.248734 1194.928955 0.000000 550.588745 2020.242920 138.945175 132.769882 555.780701 0.000000 505.060730  
 )";
 
+REAL grid_uai_input_primal_issue_lb = 3.15e-5;
+REAL grid_uai_input_primal_issue_lb_tight = 3.9923e-05; // TO ADDRESS: Tighter lower bound from MATLAB
 std::string grid_uai_input_primal_issue = 
 R"(MARKOV
 12
@@ -1032,15 +1038,21 @@ MAX-POTENTIALS
 std::vector<INDEX> grid_uai_input_medium_sol = {2,2,2,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3};
 std::vector<std::string> solver_options_small= {
    {"max potential small grid test"},
-   {"--maxIter"}, {"2000"},
-   {"--timeout"}, {"60"}, // half minute
+   {"--maxIter"}, {"1000"},
+   {"--timeout"}, {"10"},
+   {"--roundingReparametrization"}, {"damped_uniform"},
+   {"--standardReparametrization"}, {"damped_uniform"},
    {"-v"}, {"2"}
 };
 
 std::vector<std::string> solver_options_medium = {
    {"max potential grid test"},
    {"--maxIter"}, {"2000"},
-   {"--timeout"}, {"60"}, // half minute
+   {"--timeout"}, {"20"},
+   {"--roundingReparametrization"}, {"damped_uniform"},
+   {"--standardReparametrization"}, {"damped_uniform"},
    {"-v"}, {"2"}
 };
 }
+
+#endif // DATA_MAX_POTENTIALS_GRIDS_TEST

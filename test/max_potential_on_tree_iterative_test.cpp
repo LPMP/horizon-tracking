@@ -33,14 +33,8 @@ int main()
 
     {
         max_potential_on_tree_iterative tree = max_potential_on_tree_iterative(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule);
-        tree.LowerBound();
-        std::vector<std::array<REAL, 3>> rootMarginals = tree.max_potential_marginals();
-        REAL bestSumMarginal = INFINITY;
-        for (const auto& currentM : rootMarginals)
-        {
-            bestSumMarginal = fmin(currentM[0] + currentM[1], bestSumMarginal);
-        }
-        test(bestSumMarginal == 1);
+        auto lb = tree.LowerBound();
+        test(lb == 1);
     }
 
     // now add linear potentials
@@ -60,14 +54,8 @@ int main()
 
     {
         max_potential_on_tree_iterative tree = max_potential_on_tree_iterative(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule);
-        tree.LowerBound();
-        std::vector<std::array<REAL, 3>> rootMarginals = tree.max_potential_marginals();
-        REAL bestSumMarginal = INFINITY;
-        for (const auto& currentM : rootMarginals)
-        {
-            bestSumMarginal = fmin(currentM[0] + currentM[1], bestSumMarginal);
-        }
-        test(bestSumMarginal == 6);
+        auto lb = tree.LowerBound();
+        test(lb == 6);
     }
 
     LinearPairwisePotentials(0,2,0) = 1.5;
@@ -75,13 +63,7 @@ int main()
 
     {
         max_potential_on_tree_iterative tree = max_potential_on_tree_iterative(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule);
-        tree.LowerBound();
-        std::vector<std::array<REAL, 3>> rootMarginals = tree.max_potential_marginals();
-        REAL bestSumMarginal = INFINITY;
-        for (const auto& currentM : rootMarginals)
-        {
-            bestSumMarginal = fmin(currentM[0] + currentM[1], bestSumMarginal);
-        }
-        test(bestSumMarginal == 4);
+        auto lb = tree.LowerBound();
+        test(lb == 4);
     }
 }

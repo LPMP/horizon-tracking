@@ -44,11 +44,12 @@ namespace LP_MP {
                 }
                 SortingOrder = GetMaxPotsSortingOrder(MaxPotentials);
                 max_potential_index_.resize(marginals_collection_.size());
+                init_primal();
             }
 
             void init_primal() 
             {
-                primal_computed = false;
+                std::fill(max_potential_index_.begin(), max_potential_index_.end(), std::numeric_limits<INDEX>::max());
             }
 
             REAL LowerBound() const
@@ -59,6 +60,7 @@ namespace LP_MP {
 
             REAL EvaluatePrimal() const
             {
+                const bool primal_computed = *std::max_element(max_potential_index_.begin(), max_potential_index_.end()) < std::numeric_limits<INDEX>::max();
                 assert(primal_computed);
                 // return cost of current solution
                 REAL linearCost = 0;
@@ -103,9 +105,6 @@ namespace LP_MP {
             INDEX max_potential_index(const INDEX tableIndex) const
             {
                 assert(tableIndex < max_potential_index_.size());
-                if (!primal_computed)
-                    Solve();
-
                 return max_potential_index_[tableIndex]; 
             }
 
@@ -130,7 +129,6 @@ namespace LP_MP {
 
             std::vector<MaxPotentialElement> MaxPotentials;
             mutable std::vector<INDEX> max_potential_index_;
-            mutable bool primal_computed = false;
             std::vector<INDEX> SortingOrder;
 
             template <bool computeMarginals = false> 
@@ -191,7 +189,6 @@ namespace LP_MP {
                 }
 
                 max_potential_index_ = bestLabelsForTables;
-                primal_computed = true;
 #ifndef NDEBUG 
                 assert(std::abs(bestObjective - EvaluatePrimal()) <= eps);
 #endif
@@ -665,6 +662,7 @@ public:
         return solution_[i]; 
     }
 
+    //TO ADDRESS: Move solution_ computation to messages.
     void set_max_potential_index(const INDEX index) const
     {
         assert(max_potential_marginals_valid_);
@@ -1698,549 +1696,549 @@ class max_factor_tree_graph_message {
     const INDEX entry; // TODO: change name?
 };
 
-// class LabelStateSpace {
-//     private:
-//         REAL MaxPotentialUpperBound;
-//         REAL MaxPotentialLowerBound;
-//         bool lowerBoundAdded = false;
-//         bool cleared = false;
-//         std::map<REAL, REAL> potentials; 
+class LabelStateSpace {
+    private:
+        REAL MaxPotentialUpperBound;
+        REAL MaxPotentialLowerBound;
+        bool lowerBoundAdded = false;
+        bool cleared = false;
+        std::map<REAL, REAL> potentials; 
 
-//     public:
-//         LabelStateSpace()
-//         {}
+    public:
+        LabelStateSpace()
+        {}
 
-//         LabelStateSpace(REAL maxPotLowerBound, REAL maxPotUpperBound) :
-//         MaxPotentialLowerBound(maxPotLowerBound), MaxPotentialUpperBound(maxPotUpperBound)
-//         {
-//             assert(MaxPotentialLowerBound <= MaxPotentialUpperBound);
-//         }
+        LabelStateSpace(REAL maxPotLowerBound, REAL maxPotUpperBound) :
+        MaxPotentialLowerBound(maxPotLowerBound), MaxPotentialUpperBound(maxPotUpperBound)
+        {
+            assert(MaxPotentialLowerBound <= MaxPotentialUpperBound);
+        }
 
-//         const std::map<REAL, REAL>& GetPotentials() const
-//         {
-//             assert(!cleared);
-//             return potentials;
-//         }
+        const std::map<REAL, REAL>& GetPotentials() const
+        {
+            assert(!cleared);
+            return potentials;
+        }
 
-//         void CheckAndInsert(REAL maxPot, REAL linearPot)
-//         {
-//             assert(!cleared);
-//             if (maxPot > MaxPotentialUpperBound)
-//                 return; // This edge has value greater than ub, and we hope to find something <= ub, thus discarding this.
+        void CheckAndInsert(REAL maxPot, REAL linearPot)
+        {
+            assert(!cleared);
+            if (maxPot > MaxPotentialUpperBound)
+                return; // This edge has value greater than ub, and we hope to find something <= ub, thus discarding this.
 
-//             else if (maxPot < MaxPotentialLowerBound)
-//             {
-//                 if (!lowerBoundAdded)
-//                 {
-//                     potentials.insert(std::pair<REAL, REAL>(MaxPotentialLowerBound, linearPot));
-//                     lowerBoundAdded = true;
-//                 }
-//                 else
-//                 {
-//                     auto itr = potentials.find(MaxPotentialLowerBound);
-//                     assert(itr != potentials.end());
-//                     itr->second = std::min(linearPot, itr->second);
-//                 }
-//             }
+            else if (maxPot < MaxPotentialLowerBound)
+            {
+                if (!lowerBoundAdded)
+                {
+                    potentials.insert(std::pair<REAL, REAL>(MaxPotentialLowerBound, linearPot));
+                    lowerBoundAdded = true;
+                }
+                else
+                {
+                    auto itr = potentials.find(MaxPotentialLowerBound);
+                    assert(itr != potentials.end());
+                    itr->second = std::min(linearPot, itr->second);
+                }
+            }
 
-//             else
-//             {
-//                 auto lbKey = potentials.lower_bound(maxPot);
-//                 if (lbKey != potentials.end() || potentials.size() > 0)
-//                 {
-//                     if (lbKey->first == maxPot) // Current key already exists in the map
-//                     {
-//                         lbKey->second = std::min(linearPot, lbKey->second);
-//                         return;
-//                     }
+            else
+            {
+                auto lbKey = potentials.lower_bound(maxPot);
+                if (lbKey != potentials.end() || potentials.size() > 0)
+                {
+                    if (lbKey->first == maxPot) // Current key already exists in the map
+                    {
+                        lbKey->second = std::min(linearPot, lbKey->second);
+                        return;
+                    }
 
-//                     //Need to insert ALL max pots between lb and ub even if for now they dont seem optimal, they CAN become optimal after reparametrization!
-//                     // else if (lbKey != potentials.begin()) // There is a key before the current element which needs to be checked with current max pot.
-//                     // {
-//                     //     assert(maxPot > std::prev(lbKey)->first);
-//                     //     if (!(linearPot < std::prev(lbKey)->second)) // Inserting has no benefit as linearPot is not strictly less than previous linear pot.
-//                     //         return;
-//                     // }
-//                 }
-//                 potentials.insert(lbKey, std::pair<REAL, REAL>(maxPot, linearPot)); // Insert with hint 
-//                 if (maxPot == MaxPotentialLowerBound)
-//                     lowerBoundAdded = true;
-//             }
-//         }
+                    //Need to insert ALL max pots between lb and ub even if for now they dont seem optimal, they CAN become optimal after reparametrization!
+                    // else if (lbKey != potentials.begin()) // There is a key before the current element which needs to be checked with current max pot.
+                    // {
+                    //     assert(maxPot > std::prev(lbKey)->first);
+                    //     if (!(linearPot < std::prev(lbKey)->second)) // Inserting has no benefit as linearPot is not strictly less than previous linear pot.
+                    //         return;
+                    // }
+                }
+                potentials.insert(lbKey, std::pair<REAL, REAL>(maxPot, linearPot)); // Insert with hint 
+                if (maxPot == MaxPotentialLowerBound)
+                    lowerBoundAdded = true;
+            }
+        }
 
-//         REAL GetMaxPotLowerBound() const
-//         {
-//             return MaxPotentialLowerBound;
-//         }
+        REAL GetMaxPotLowerBound() const
+        {
+            return MaxPotentialLowerBound;
+        }
 
-//         REAL GetMaxPotUpperBound() const
-//         {
-//             return MaxPotentialUpperBound;
-//         }
+        REAL GetMaxPotUpperBound() const
+        {
+            return MaxPotentialUpperBound;
+        }
 
-//         void TakeUnion(LabelStateSpace newStateSpace)
-//         {
-//             assert(!isCleared());
-//             assert(!newStateSpace.isCleared());
-//             const auto& newPotentials = newStateSpace.GetPotentials();
-//             for (auto const& currentPot : newPotentials)
-//             {
-//                 CheckAndInsert(currentPot.first, currentPot.second);
-//             }
-//         }
+        void TakeUnion(LabelStateSpace newStateSpace)
+        {
+            assert(!isCleared());
+            assert(!newStateSpace.isCleared());
+            const auto& newPotentials = newStateSpace.GetPotentials();
+            for (auto const& currentPot : newPotentials)
+            {
+                CheckAndInsert(currentPot.first, currentPot.second);
+            }
+        }
 
-//         static LabelStateSpace MergeStateSpaceFromDifferentNeighbours(LabelStateSpace s1, LabelStateSpace s2)
-//         {
-//             assert(!s1.isCleared());
-//             assert(!s2.isCleared());
-//             const auto& s1Potentials = s1.GetPotentials();
-//             const auto& s2Potentials = s2.GetPotentials();
+        static LabelStateSpace MergeStateSpaceFromDifferentNeighbours(LabelStateSpace s1, LabelStateSpace s2)
+        {
+            assert(!s1.isCleared());
+            assert(!s2.isCleared());
+            const auto& s1Potentials = s1.GetPotentials();
+            const auto& s2Potentials = s2.GetPotentials();
 
-//             if (s1Potentials.size() == 0)
-//                 return s2;
+            if (s1Potentials.size() == 0)
+                return s2;
 
-//             if (s2Potentials.size() == 0)
-//                 return s1;
+            if (s2Potentials.size() == 0)
+                return s1;
 
-//             LabelStateSpace merged = LabelStateSpace(s1.GetMaxPotLowerBound(), s1.GetMaxPotUpperBound());
-//             assert(s1.GetMaxPotLowerBound() == s2.GetMaxPotLowerBound());
-//             assert(s1.GetMaxPotUpperBound() == s2.GetMaxPotUpperBound());
-//             for (auto const& currentS1Pot : s1Potentials)
-//             {
-//                 for (auto const& currentS2Pot : s2Potentials)
-//                 {
-//                     merged.CheckAndInsert(std::max(currentS1Pot.first, currentS2Pot.first), currentS1Pot.second + currentS2Pot.second);
-//                     //Probably can be made more efficient, also validate the logic.
-//                 }
-//             }
-//             return merged;
-//         }
+            LabelStateSpace merged = LabelStateSpace(s1.GetMaxPotLowerBound(), s1.GetMaxPotUpperBound());
+            assert(s1.GetMaxPotLowerBound() == s2.GetMaxPotLowerBound());
+            assert(s1.GetMaxPotUpperBound() == s2.GetMaxPotUpperBound());
+            for (auto const& currentS1Pot : s1Potentials)
+            {
+                for (auto const& currentS2Pot : s2Potentials)
+                {
+                    merged.CheckAndInsert(std::max(currentS1Pot.first, currentS2Pot.first), currentS1Pot.second + currentS2Pot.second);
+                    //Probably can be made more efficient, also validate the logic.
+                }
+            }
+            return merged;
+        }
 
-//         void ClearPotentials()
-//         {
-//             potentials.clear();
-//             cleared = true;
-//         }
+        void ClearPotentials()
+        {
+            potentials.clear();
+            cleared = true;
+        }
 
-//         bool isCleared() const
-//         {
-//             return cleared;
-//         }
+        bool isCleared() const
+        {
+            return cleared;
+        }
 
-// };
+};
 
-// class max_potential_on_tree_dynamic_prog {
-//     public:       
-//         max_potential_on_tree_dynamic_prog(const three_dimensional_variable_array<REAL>& maxPairwisePotentials, const three_dimensional_variable_array<REAL>& linearPairwisePotentials,
-//          const std::vector<INDEX>& numLabels, const std::vector<std::array<INDEX, 2>>& messagePassingSchedule, const std::vector<INDEX>& numEdgesForNode)
-//         :
-//             LinearPairwisePotentials(linearPairwisePotentials),
-//             MaxPairwisePotentials(maxPairwisePotentials),
-//             NumLabels(numLabels),
-//             NumNodes(numLabels.size()),
-//             NumEdgesForNode(numEdgesForNode),
-//             MessagePassingSchedule(messagePassingSchedule)
-//         {
-//             assert(maxPairwisePotentials.dim1() + 1 == numLabels.size()); 
-//             assert(maxPairwisePotentials.dim1() == linearPairwisePotentials.dim1());
-//             ComputeMaxPotLowerBound();
-//             solution_.assign(NumNodes, 0);
-//         }
+class max_potential_on_tree_dynamic_prog {
+    public:       
+        max_potential_on_tree_dynamic_prog(const three_dimensional_variable_array<REAL>& maxPairwisePotentials, const three_dimensional_variable_array<REAL>& linearPairwisePotentials,
+         const std::vector<INDEX>& numLabels, const std::vector<std::array<INDEX, 2>>& messagePassingSchedule, const std::vector<INDEX>& numEdgesForNode)
+        :
+            LinearPairwisePotentials(linearPairwisePotentials),
+            MaxPairwisePotentials(maxPairwisePotentials),
+            NumLabels(numLabels),
+            NumNodes(numLabels.size()),
+            NumEdgesForNode(numEdgesForNode),
+            MessagePassingSchedule(messagePassingSchedule)
+        {
+            assert(maxPairwisePotentials.dim1() + 1 == numLabels.size()); 
+            assert(maxPairwisePotentials.dim1() == linearPairwisePotentials.dim1());
+            ComputeMaxPotLowerBound();
+            solution_.assign(NumNodes, 0);
+        }
 
-//         // Call this function whenever linear/max potentials get changed so the bounds need to be recomputed.
-//         void LinearPotsChanged()
-//         {
-//             boundsDirty = true;
-//         }
+        // Call this function whenever linear/max potentials get changed so the bounds need to be recomputed.
+        void LinearPotsChanged()
+        {
+            boundsDirty = true;
+        }
 
-//         REAL GetMaxPotLowerBound()
-//         {
-//             return MaxPotentialLowerBoundForAllTrees;
-//         }
+        REAL GetMaxPotLowerBound()
+        {
+            return MaxPotentialLowerBoundForAllTrees;
+        }
 
-//         REAL GetMaxPotUpperBound()
-//         {
-//             if (boundsDirty)
-//             {
-//                 ComputeMaxPotUpperBound();
-//                 boundsDirty = false;
-//             }
-//             return MaxPotentialUpperBound;
-//         }
+        REAL GetMaxPotUpperBound()
+        {
+            if (boundsDirty)
+            {
+                ComputeMaxPotUpperBound();
+                boundsDirty = false;
+            }
+            return MaxPotentialUpperBound;
+        }
 
-//         REAL LowerBound() const
-//         {
-//             return Solve();
-//             return solutionObjective;
-//             // compute optimal solution and return its cost
-//         }
+        REAL LowerBound() const
+        {
+            Solve();
+            return solutionObjective;
+            // compute optimal solution and return its cost
+        }
 
-//         REAL EvaluatePrimal() const
-//         {
-//             return solutionObjective;
-//             // return cost of current solution
-//         }
+        REAL EvaluatePrimal() const
+        {
+            return solutionObjective;
+            // return cost of current solution
+        }
 
-//         void MaximizePotentialAndComputePrimal() 
-//         {
-//             Solve();
-//             ComputeSolution();
-//             // compute optimal solution and store it
-//         }
+        void MaximizePotentialAndComputePrimal() 
+        {
+            Solve();
+            ComputeSolution();
+            // compute optimal solution and store it
+        }
 
-//         INDEX& solution(const INDEX i) { assert(i < solution_.size()); return solution_[i]; }
-//         INDEX solution(const INDEX i) const { assert(i < solution_.size()); return solution_[i]; }
+        INDEX& solution(const INDEX i) { assert(i < solution_.size()); return solution_[i]; }
+        INDEX solution(const INDEX i) const { assert(i < solution_.size()); return solution_[i]; }
 
-//         void set_max_potential_index(const INDEX index)
-//         {
-//             if (max_potential_index_ == index)
-//                 return;
+        void set_max_potential_index(const INDEX index)
+        {
+            if (max_potential_index_ == index)
+                return;
 
-//             max_potential_index_ = index;
-//             ComputeSolution();
-//         }
+            max_potential_index_ = index;
+            ComputeSolution();
+        }
 
-//         INDEX max_potential_index() const { return max_potential_index_; }
+        INDEX max_potential_index() const { return max_potential_index_; }
                         
-//         std::array<REAL,3>& max_potential_marginal(const INDEX i) { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
-//         std::array<REAL,3> max_potential_marginal(const INDEX i) const { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
-//         std::vector<std::array<REAL,3>> max_potential_marginals() const { return max_potential_marginals_; }
+        std::array<REAL,3>& max_potential_marginal(const INDEX i) { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
+        std::array<REAL,3> max_potential_marginal(const INDEX i) const { assert(i < max_potential_marginals_.size()); return max_potential_marginals_[i]; }
+        std::vector<std::array<REAL,3>> max_potential_marginals() const { return max_potential_marginals_; }
 
-//     private:
-//         mutable std::vector<INDEX> solution_;
-//         three_dimensional_variable_array<REAL> MaxPairwisePotentials;
-//         three_dimensional_variable_array<REAL> LinearPairwisePotentials;
-//         INDEX NumNodes;
-//         std::vector<INDEX> NumLabels;
-//         std::vector<INDEX> NumEdgesForNode;
+    private:
+        mutable std::vector<INDEX> solution_;
+        three_dimensional_variable_array<REAL> MaxPairwisePotentials;
+        three_dimensional_variable_array<REAL> LinearPairwisePotentials;
+        INDEX NumNodes;
+        std::vector<INDEX> NumLabels;
+        std::vector<INDEX> NumEdgesForNode;
         
-//         std::vector<std::array<INDEX, 2>> MessagePassingSchedule;
-//         static REAL MaxPotentialLowerBoundForAllTrees;    // Computed by max potential message passing.
-//         mutable REAL MaxPotentialUpperBound;
-//         mutable REAL LinearPotentialLowerBound; // Computed by conventional message passing.
-//         // mutable REAL LinearPotentialUpperBound; // Can be computed from max potential message passing and by used to prune paths longer than this bound.
-//         mutable INDEX max_potential_index_;
-//         mutable std::vector<std::array<REAL,3>> max_potential_marginals_; // (i) max potential, (ii) minimum linear potential, (iii) cost of configuration 
-//         mutable bool MaxPotMarginalsInitialized = false;
+        std::vector<std::array<INDEX, 2>> MessagePassingSchedule;
+        static REAL MaxPotentialLowerBoundForAllTrees;    // Computed by max potential message passing.
+        mutable REAL MaxPotentialUpperBound;
+        mutable REAL LinearPotentialLowerBound; // Computed by conventional message passing.
+        // mutable REAL LinearPotentialUpperBound; // Can be computed from max potential message passing and by used to prune paths longer than this bound.
+        mutable INDEX max_potential_index_;
+        mutable std::vector<std::array<REAL,3>> max_potential_marginals_; // (i) max potential, (ii) minimum linear potential, (iii) cost of configuration 
+        mutable bool MaxPotMarginalsInitialized = false;
 
-//         bool boundsDirty = true;
-//         mutable REAL solutionObjective = std::numeric_limits<REAL>::max();
+        bool boundsDirty = true;
+        mutable REAL solutionObjective = std::numeric_limits<REAL>::max();
 
-//         void ComputeMaxPotLowerBound() const
-//         {
-//             std::array<REAL, 2> bounds = MessagePassingForOnePotential(MaxPairwisePotentials, LinearPairwisePotentials, false);
-//             MaxPotentialLowerBoundForAllTrees = std::max(bounds[0], MaxPotentialLowerBoundForAllTrees); // To take max over all trees.
-//             // LinearPotentialUpperBound = bounds[1]; //If this is not useful remove it and compute max potential lb only once and store it, as it will not change.
-//             // Seems like LinearPotentialUpperBound wont help in anything, so we dont need to call this function again and again after updated linear pots.
-//         }
+        void ComputeMaxPotLowerBound() const
+        {
+            std::array<REAL, 2> bounds = MessagePassingForOnePotential(MaxPairwisePotentials, LinearPairwisePotentials, false);
+            MaxPotentialLowerBoundForAllTrees = std::max(bounds[0], MaxPotentialLowerBoundForAllTrees); // To take max over all trees.
+            // LinearPotentialUpperBound = bounds[1]; //If this is not useful remove it and compute max potential lb only once and store it, as it will not change.
+            // Seems like LinearPotentialUpperBound wont help in anything, so we dont need to call this function again and again after updated linear pots.
+        }
 
-//         void ComputeMaxPotUpperBound() const
-//         {
-//             std::array<REAL, 2> bounds = MessagePassingForOnePotential(LinearPairwisePotentials, MaxPairwisePotentials, true);
-//             LinearPotentialLowerBound = bounds[0];
-//             MaxPotentialUpperBound = bounds[1];
-//         }
+        void ComputeMaxPotUpperBound() const
+        {
+            std::array<REAL, 2> bounds = MessagePassingForOnePotential(LinearPairwisePotentials, MaxPairwisePotentials, true);
+            LinearPotentialLowerBound = bounds[0];
+            MaxPotentialUpperBound = bounds[1];
+        }
 
-//         // Computes and stores the marginals of the root node.
-//         void Solve() const
-//         {
-//             std::vector<std::vector<LabelStateSpace>> messages(NumNodes);
-//             for (INDEX i = 0; i < NumNodes; i++)
-//             {
-//                 messages[i].resize(NumLabels[i]);
-//                 for (INDEX l = 0; l < NumLabels[i]; l++) 
-//                     messages[i][l] = LabelStateSpace(MaxPotentialLowerBoundForAllTrees, MaxPotentialUpperBound);
-//             }
+        // Computes and stores the marginals of the root node.
+        void Solve() const
+        {
+            std::vector<std::vector<LabelStateSpace>> messages(NumNodes);
+            for (INDEX i = 0; i < NumNodes; i++)
+            {
+                messages[i].resize(NumLabels[i]);
+                for (INDEX l = 0; l < NumLabels[i]; l++) 
+                    messages[i][l] = LabelStateSpace(MaxPotentialLowerBoundForAllTrees, MaxPotentialUpperBound);
+            }
 
-//             std::vector<INDEX> totalSentAndReceivedMessages(NumNodes, 0);
-//             std::vector<bool> messageReceived(NumNodes, false);
-//             INDEX edgeIndex = 0;
-//             for (const auto & currentEdge : MessagePassingSchedule)
-//             {
-//                 INDEX tail = currentEdge[0];
-//                 INDEX head = currentEdge[1];
-//                 bool isTailLeaf = false;
-//                 if (!messageReceived[tail]) // Only leaf nodes can send a message (only one) and only before receiving any.
-//                 {
-//                     isTailLeaf = true;
-//                     assert(totalSentAndReceivedMessages[tail] == 0);
-//                 }
-//                 for (INDEX lh = 0; lh < NumLabels[head]; lh++)
-//                 {
-//                     LabelStateSpace lhStateSpace = GetHeadLabelStateSpaceFromCurrentTail(messages[tail], edgeIndex, lh, head < tail, isTailLeaf);
-//                     LabelStateSpace lhPrevStateSpace = messages[head][lh];
-//                     messages[head][lh] = LabelStateSpace::MergeStateSpaceFromDifferentNeighbours(lhStateSpace, lhPrevStateSpace);
-//                 }
+            std::vector<INDEX> totalSentAndReceivedMessages(NumNodes, 0);
+            std::vector<bool> messageReceived(NumNodes, false);
+            INDEX edgeIndex = 0;
+            for (const auto & currentEdge : MessagePassingSchedule)
+            {
+                INDEX tail = currentEdge[0];
+                INDEX head = currentEdge[1];
+                bool isTailLeaf = false;
+                if (!messageReceived[tail]) // Only leaf nodes can send a message (only one) and only before receiving any.
+                {
+                    isTailLeaf = true;
+                    assert(totalSentAndReceivedMessages[tail] == 0);
+                }
+                for (INDEX lh = 0; lh < NumLabels[head]; lh++)
+                {
+                    LabelStateSpace lhStateSpace = GetHeadLabelStateSpaceFromCurrentTail(messages[tail], edgeIndex, lh, head < tail, isTailLeaf);
+                    LabelStateSpace lhPrevStateSpace = messages[head][lh];
+                    messages[head][lh] = LabelStateSpace::MergeStateSpaceFromDifferentNeighbours(lhStateSpace, lhPrevStateSpace);
+                }
 
-//                 totalSentAndReceivedMessages[head]++;
-//                 totalSentAndReceivedMessages[tail]++;
+                totalSentAndReceivedMessages[head]++;
+                totalSentAndReceivedMessages[tail]++;
 
-//                 // Clear the potentials of all nodes except root node to conserve memory as they have 'messaged' their beliefs already.
-//                 if (currentEdge != MessagePassingSchedule.back())
-//                 {
-//                     if (totalSentAndReceivedMessages[tail] == NumEdgesForNode[tail])
-//                     {   
-//                         for (INDEX lt = 0; lt < NumLabels[tail]; lt++)
-//                             messages[tail][lt].ClearPotentials();
-//                     }
-//                     if (totalSentAndReceivedMessages[head] == NumEdgesForNode[head])
-//                     {
-//                         for (INDEX lh = 0; lh < NumLabels[head]; lh++)
-//                             messages[head][lh].ClearPotentials();
-//                     }
-//                 }
-//                 edgeIndex++;
-//             }
+                // Clear the potentials of all nodes except root node to conserve memory as they have 'messaged' their beliefs already.
+                if (currentEdge != MessagePassingSchedule.back())
+                {
+                    if (totalSentAndReceivedMessages[tail] == NumEdgesForNode[tail])
+                    {   
+                        for (INDEX lt = 0; lt < NumLabels[tail]; lt++)
+                            messages[tail][lt].ClearPotentials();
+                    }
+                    if (totalSentAndReceivedMessages[head] == NumEdgesForNode[head])
+                    {
+                        for (INDEX lh = 0; lh < NumLabels[head]; lh++)
+                            messages[head][lh].ClearPotentials();
+                    }
+                }
+                edgeIndex++;
+            }
 
-//             // Merge the marginals of all the labels of root node.
-//             const auto& lastEdge = MessagePassingSchedule.back();
-//             INDEX rootNode = lastEdge[1];
-//             LabelStateSpace mergedRootNodeStateSpace;
-//             for (INDEX l = 0; l < NumLabels[rootNode]; l++)
-//             {
-//                 mergedRootNodeStateSpace.TakeUnion(messages[rootNode][l]);
-//             }
-//             auto rootPots = mergedRootNodeStateSpace.GetPotentials();
-//             INDEX maxPotIndex = 0;
-//             for (const auto &currentPair : rootPots)
-//             {
-//                 if (!MaxPotMarginalsInitialized)
-//                     max_potential_marginals_.push_back({currentPair.first, currentPair.second, 0});
-//                 else
-//                 {
-//                     // Due to std::map the rootPots should be already sorted w.r.t increasing max pots:
-//                     assert(currentPair.first == max_potential_marginals_[maxPotIndex][0]); 
-//                     max_potential_marginals_[maxPotIndex][1] = currentPair.second;
-//                 }
-//                 maxPotIndex++;
-//             }
-//         }
+            // Merge the marginals of all the labels of root node.
+            const auto& lastEdge = MessagePassingSchedule.back();
+            INDEX rootNode = lastEdge[1];
+            LabelStateSpace mergedRootNodeStateSpace;
+            for (INDEX l = 0; l < NumLabels[rootNode]; l++)
+            {
+                mergedRootNodeStateSpace.TakeUnion(messages[rootNode][l]);
+            }
+            auto rootPots = mergedRootNodeStateSpace.GetPotentials();
+            INDEX maxPotIndex = 0;
+            for (const auto &currentPair : rootPots)
+            {
+                if (!MaxPotMarginalsInitialized)
+                    max_potential_marginals_.push_back({currentPair.first, currentPair.second, 0});
+                else
+                {
+                    // Due to std::map the rootPots should be already sorted w.r.t increasing max pots:
+                    assert(currentPair.first == max_potential_marginals_[maxPotIndex][0]); 
+                    max_potential_marginals_[maxPotIndex][1] = currentPair.second;
+                }
+                maxPotIndex++;
+            }
+        }
 
-//         LabelStateSpace GetHeadLabelStateSpaceFromCurrentTail(const std::vector<LabelStateSpace>& tailMessages, INDEX edgeIndex, INDEX lh, bool isReverse, bool isTailLeaf = false) const 
-//         {
-//             LabelStateSpace lhStateSpace(MaxPotentialLowerBoundForAllTrees, MaxPotentialUpperBound);
-//             for (INDEX lt = 0; lt < tailMessages.size(); lt++)
-//             {
-//                 // Assuming that the 2D matrix of potentials for each edge is stored always in the order in which tail always counts as l2 and head as l1.
-//                 assert(!isReverse && MaxPairwisePotentials.dim2(edgeIndex) == tailMessages.size() || 
-//                         isReverse && MaxPairwisePotentials.dim3(edgeIndex) == tailMessages.size());
-//                 assert(!isReverse && LinearPairwisePotentials.dim2(edgeIndex) == tailMessages.size() ||
-//                         isReverse && LinearPairwisePotentials.dim3(edgeIndex) == tailMessages.size()); 
+        LabelStateSpace GetHeadLabelStateSpaceFromCurrentTail(const std::vector<LabelStateSpace>& tailMessages, INDEX edgeIndex, INDEX lh, bool isReverse, bool isTailLeaf = false) const 
+        {
+            LabelStateSpace lhStateSpace(MaxPotentialLowerBoundForAllTrees, MaxPotentialUpperBound);
+            for (INDEX lt = 0; lt < tailMessages.size(); lt++)
+            {
+                // Assuming that the 2D matrix of potentials for each edge is stored always in the order in which tail always counts as l2 and head as l1.
+                assert(!isReverse && MaxPairwisePotentials.dim2(edgeIndex) == tailMessages.size() || 
+                        isReverse && MaxPairwisePotentials.dim3(edgeIndex) == tailMessages.size());
+                assert(!isReverse && LinearPairwisePotentials.dim2(edgeIndex) == tailMessages.size() ||
+                        isReverse && LinearPairwisePotentials.dim3(edgeIndex) == tailMessages.size()); 
 
-//                 REAL edgeMaxPot = !isReverse ? MaxPairwisePotentials(edgeIndex, lt, lh) : MaxPairwisePotentials(edgeIndex, lh, lt);
-//                 REAL edgeLinearPot = !isReverse ? LinearPairwisePotentials(edgeIndex, lt, lh) : LinearPairwisePotentials(edgeIndex, lh, lt);
-//                 if (!isTailLeaf)
-//                 {
-//                     for (const auto& currentMessageTolt: tailMessages[lt].GetPotentials()) // Iterator over all messages incoming to l1.
-//                     {
-//                         lhStateSpace.CheckAndInsert(std::max(currentMessageTolt.second, edgeMaxPot), currentMessageTolt.first + edgeLinearPot);
-//                     }
-//                 }
-//                 else
-//                 {
-//                     lhStateSpace.CheckAndInsert(edgeMaxPot, edgeLinearPot);                    
-//                 }
-//             }
-//             return lhStateSpace;
-//         }
+                REAL edgeMaxPot = !isReverse ? MaxPairwisePotentials(edgeIndex, lt, lh) : MaxPairwisePotentials(edgeIndex, lh, lt);
+                REAL edgeLinearPot = !isReverse ? LinearPairwisePotentials(edgeIndex, lt, lh) : LinearPairwisePotentials(edgeIndex, lh, lt);
+                if (!isTailLeaf)
+                {
+                    for (const auto& currentMessageTolt: tailMessages[lt].GetPotentials()) // Iterator over all messages incoming to l1.
+                    {
+                        lhStateSpace.CheckAndInsert(std::max(currentMessageTolt.second, edgeMaxPot), currentMessageTolt.first + edgeLinearPot);
+                    }
+                }
+                else
+                {
+                    lhStateSpace.CheckAndInsert(edgeMaxPot, edgeLinearPot);                    
+                }
+            }
+            return lhStateSpace;
+        }
 
-//         void ComputeSolution() const
-//         {
-//             std::vector<std::vector<REAL>> messages(NumNodes);
-//             std::vector<bool> messageSent(NumNodes, false);
-//             std::vector<bool> messageReceived(NumNodes, false);
-//             for (INDEX i = 0; i < NumNodes; i++)
-//             {
-//                 messages[i].resize(NumLabels[i], 0);
-//             }
+        void ComputeSolution() const
+        {
+            std::vector<std::vector<REAL>> messages(NumNodes);
+            std::vector<bool> messageSent(NumNodes, false);
+            std::vector<bool> messageReceived(NumNodes, false);
+            for (INDEX i = 0; i < NumNodes; i++)
+            {
+                messages[i].resize(NumLabels[i], 0);
+            }
 
-//             INDEX edgeIndex = 0;
-//             for (const auto & currentEdge : MessagePassingSchedule)
-//             {
-//                 INDEX tail = currentEdge[0];
-//                 INDEX head = currentEdge[1];
-//                 if (!messageReceived[tail]) // Only leaf nodes can send a message (only one) and only before receiving any.
-//                 {
-//                     assert(!messageSent[tail]);
-//                 }
-//                 for (INDEX lh = 0; lh < messages[head].size(); lh++)
-//                 {
-//                     REAL minMessage = ComputeMessageValue(messages[tail], edgeIndex, lh, head < tail);
-//                     messages[head][lh] += minMessage;
-//                 }
-//                 messageSent[tail] = true;
-//                 messageReceived[head] = true;
-//                 edgeIndex++;
-//             }
+            INDEX edgeIndex = 0;
+            for (const auto & currentEdge : MessagePassingSchedule)
+            {
+                INDEX tail = currentEdge[0];
+                INDEX head = currentEdge[1];
+                if (!messageReceived[tail]) // Only leaf nodes can send a message (only one) and only before receiving any.
+                {
+                    assert(!messageSent[tail]);
+                }
+                for (INDEX lh = 0; lh < messages[head].size(); lh++)
+                {
+                    REAL minMessage = ComputeMessageValue(messages[tail], edgeIndex, lh, head < tail);
+                    messages[head][lh] += minMessage;
+                }
+                messageSent[tail] = true;
+                messageReceived[head] = true;
+                edgeIndex++;
+            }
 
-//             bool solutionObjectiveSet = false;
+            bool solutionObjectiveSet = false;
 
-//             for (auto it = MessagePassingSchedule.rbegin(); it != MessagePassingSchedule.rend(); ++it)           
-//             {
-//                 edgeIndex--;
-//                 const auto & currentEdge = *it;
-//                 INDEX tail = currentEdge[1];
-//                 INDEX head = currentEdge[0];
-//                 REAL tailNodeBestMessage = INFINITY;
-//                 for (INDEX lt = 0; lt < messages[tail].size(); lt++)
-//                 {
-//                     if (messages[tail][lt] < tailNodeBestMessage)
-//                     {
-//                         solution_[tail] = lt;
-//                         tailNodeBestMessage = messages[tail][lt];
-//                     }
-//                 }
+            for (auto it = MessagePassingSchedule.rbegin(); it != MessagePassingSchedule.rend(); ++it)           
+            {
+                edgeIndex--;
+                const auto & currentEdge = *it;
+                INDEX tail = currentEdge[1];
+                INDEX head = currentEdge[0];
+                REAL tailNodeBestMessage = INFINITY;
+                for (INDEX lt = 0; lt < messages[tail].size(); lt++)
+                {
+                    if (messages[tail][lt] < tailNodeBestMessage)
+                    {
+                        solution_[tail] = lt;
+                        tailNodeBestMessage = messages[tail][lt];
+                    }
+                }
                 
-//                 if (!solutionObjectiveSet) // Works for root node.
-//                 {
-//                     solutionObjective = tailNodeBestMessage + max_potential_marginals_[max_potential_index_][2];
-//                     solutionObjectiveSet = true;
-//                 }
+                if (!solutionObjectiveSet) // Works for root node.
+                {
+                    solutionObjective = tailNodeBestMessage + max_potential_marginals_[max_potential_index_][2];
+                    solutionObjectiveSet = true;
+                }
 
-//                 for (INDEX lh = 0; lh < messages[head].size(); lh++)
-//                 {
-//                     REAL minMessage = ComputeMessageValue(messages[tail], edgeIndex, lh, head < tail, solution_[tail]);
-//                     messages[head][lh] += minMessage;
-//                 }
-//             }
-//         }
+                for (INDEX lh = 0; lh < messages[head].size(); lh++)
+                {
+                    REAL minMessage = ComputeMessageValue(messages[tail], edgeIndex, lh, head < tail, solution_[tail]);
+                    messages[head][lh] += minMessage;
+                }
+            }
+        }
 
-//         REAL ComputeMessageValue(const std::vector<REAL>& tailMessages, INDEX edgeIndex, 
-//         INDEX lh, bool isReverse, bool labelTail = -1) const
-//         {
-//             REAL bestMessageValue = INFINITY;
-//             INDEX bestlt;
-//             INDEX ltStart = 0;
-//             INDEX ltEnd = tailMessages.size() - 1;
+        REAL ComputeMessageValue(const std::vector<REAL>& tailMessages, INDEX edgeIndex, 
+        INDEX lh, bool isReverse, bool labelTail = -1) const
+        {
+            REAL bestMessageValue = INFINITY;
+            INDEX bestlt;
+            INDEX ltStart = 0;
+            INDEX ltEnd = tailMessages.size() - 1;
             
-//             if (labelTail >= 0)
-//             {
-//                 ltStart = labelTail;
-//                 ltEnd = labelTail;
-//             }
+            if (labelTail >= 0)
+            {
+                ltStart = labelTail;
+                ltEnd = labelTail;
+            }
 
-//             for (INDEX lt = ltStart; lt <= ltEnd; lt++)
-//             {
-//                 REAL currentEdgeMaxPot = !isReverse ? MaxPairwisePotentials(edgeIndex, lt, lh) :  MaxPairwisePotentials(edgeIndex, lh, lt);
-//                 if (currentEdgeMaxPot > max_potential_marginals_[max_potential_index_][2])
-//                     continue;
+            for (INDEX lt = ltStart; lt <= ltEnd; lt++)
+            {
+                REAL currentEdgeMaxPot = !isReverse ? MaxPairwisePotentials(edgeIndex, lt, lh) :  MaxPairwisePotentials(edgeIndex, lh, lt);
+                if (currentEdgeMaxPot > max_potential_marginals_[max_potential_index_][2])
+                    continue;
 
-//                 REAL currentEdgePot = !isReverse ? LinearPairwisePotentials(edgeIndex, lt, lh) :  LinearPairwisePotentials(edgeIndex, lh, lt);
-//                 REAL currentIncomingMsg = tailMessages[lt];
+                REAL currentEdgePot = !isReverse ? LinearPairwisePotentials(edgeIndex, lt, lh) :  LinearPairwisePotentials(edgeIndex, lh, lt);
+                REAL currentIncomingMsg = tailMessages[lt];
 
-//                 REAL msg = currentIncomingMsg + currentEdgePot;
-//                 if (msg < bestMessageValue)
-//                 {
-//                     bestMessageValue = msg;
-//                     bestlt = lt;
-//                 }
-//             }
+                REAL msg = currentIncomingMsg + currentEdgePot;
+                if (msg < bestMessageValue)
+                {
+                    bestMessageValue = msg;
+                    bestlt = lt;
+                }
+            }
 
-//             return bestMessageValue;
-//         }
+            return bestMessageValue;
+        }
 
-//         std::array<REAL, 2> MessagePassingForOnePotential(const three_dimensional_variable_array<REAL>& mainPairwisePots, const three_dimensional_variable_array<REAL>& otherPairwisePots, bool doConventional) const
-//         {
-//             std::vector<std::vector<REAL>> mainMessages(NumNodes);
-//             std::vector<std::vector<REAL>> otherMessages(NumNodes);
-//             std::vector<bool> messageSent(NumNodes, false);
-//             std::vector<bool> messageReceived(NumNodes, false);
-//             for (INDEX i = 0; i < NumNodes; i++)
-//             {
-//                 mainMessages[i].resize(NumLabels[i], 0);
-//                 otherMessages[i].resize(NumLabels[i], 0);
-//             }
+        std::array<REAL, 2> MessagePassingForOnePotential(const three_dimensional_variable_array<REAL>& mainPairwisePots, const three_dimensional_variable_array<REAL>& otherPairwisePots, bool doConventional) const
+        {
+            std::vector<std::vector<REAL>> mainMessages(NumNodes);
+            std::vector<std::vector<REAL>> otherMessages(NumNodes);
+            std::vector<bool> messageSent(NumNodes, false);
+            std::vector<bool> messageReceived(NumNodes, false);
+            for (INDEX i = 0; i < NumNodes; i++)
+            {
+                mainMessages[i].resize(NumLabels[i], 0);
+                otherMessages[i].resize(NumLabels[i], 0);
+            }
 
-//             INDEX edgeIndex = 0;
-//             for (const auto & currentEdge : MessagePassingSchedule)
-//             {
-//                 INDEX tail = currentEdge[0];
-//                 INDEX head = currentEdge[1];
-//                 if (!messageReceived[tail]) // Only leaf nodes can send a message (only one) and only before receiving any.
-//                 {
-//                     assert(!messageSent[tail]);
-//                 }
-//                 for (INDEX lh = 0; lh < mainMessages[head].size(); lh++)
-//                 {
-//                     std::array<REAL, 2> minMessage = ComputeMessageValuePair(mainMessages[tail], otherMessages[tail], edgeIndex, lh, mainPairwisePots, otherPairwisePots, doConventional, head < tail);
-//                     if (doConventional)
-//                     {
-//                         mainMessages[head][lh] += minMessage[0];
-//                         otherMessages[head][lh] = std::max(otherMessages[head][lh], minMessage[1]);
-//                     }
-//                     else
-//                     {
-//                         mainMessages[head][lh] = std::max(mainMessages[head][lh], minMessage[0]);                                            
-//                         otherMessages[head][lh] += minMessage[1];
-//                     }
-//                 }
-//                 messageSent[tail] = true;
-//                 messageReceived[head] = true;
-//                 edgeIndex++;
-//             }
+            INDEX edgeIndex = 0;
+            for (const auto & currentEdge : MessagePassingSchedule)
+            {
+                INDEX tail = currentEdge[0];
+                INDEX head = currentEdge[1];
+                if (!messageReceived[tail]) // Only leaf nodes can send a message (only one) and only before receiving any.
+                {
+                    assert(!messageSent[tail]);
+                }
+                for (INDEX lh = 0; lh < mainMessages[head].size(); lh++)
+                {
+                    std::array<REAL, 2> minMessage = ComputeMessageValuePair(mainMessages[tail], otherMessages[tail], edgeIndex, lh, mainPairwisePots, otherPairwisePots, doConventional, head < tail);
+                    if (doConventional)
+                    {
+                        mainMessages[head][lh] += minMessage[0];
+                        otherMessages[head][lh] = std::max(otherMessages[head][lh], minMessage[1]);
+                    }
+                    else
+                    {
+                        mainMessages[head][lh] = std::max(mainMessages[head][lh], minMessage[0]);                                            
+                        otherMessages[head][lh] += minMessage[1];
+                    }
+                }
+                messageSent[tail] = true;
+                messageReceived[head] = true;
+                edgeIndex++;
+            }
 
-//             const auto& lastEdge = MessagePassingSchedule.back();
-//             INDEX rootNode = lastEdge[1];
-//             assert(messageReceived[rootNode]);
-//             assert(!messageSent[rootNode]);
-//             REAL mainBound = INFINITY;
-//             REAL otherBound = INFINITY;
+            const auto& lastEdge = MessagePassingSchedule.back();
+            INDEX rootNode = lastEdge[1];
+            assert(messageReceived[rootNode]);
+            assert(!messageSent[rootNode]);
+            REAL mainBound = INFINITY;
+            REAL otherBound = INFINITY;
 
-//             for (int l = 0; l < NumLabels[rootNode]; l++)
-//             {
-//                 if (mainMessages[rootNode][l] < mainBound)
-//                 {
-//                     mainBound = mainMessages[rootNode][l];
-//                     otherBound = otherMessages[rootNode][l];
-//                 }
-//             }
+            for (int l = 0; l < NumLabels[rootNode]; l++)
+            {
+                if (mainMessages[rootNode][l] < mainBound)
+                {
+                    mainBound = mainMessages[rootNode][l];
+                    otherBound = otherMessages[rootNode][l];
+                }
+            }
 
-//             return std::array<REAL, 2>({mainBound, otherBound});
-//         }
+            return std::array<REAL, 2>({mainBound, otherBound});
+        }
 
-//         std::array<REAL, 2> ComputeMessageValuePair(const std::vector<REAL>& tailMainMessages, const std::vector<REAL>& tailOtherMessages, INDEX edgeIndex, INDEX lh, 
-//         const three_dimensional_variable_array<REAL>& mainPairwisePots, const three_dimensional_variable_array<REAL>& otherPairwisePots, bool doConventional, bool isReverse) const
-//         {
-//             REAL bestMainMessage = INFINITY;
-//             REAL bestOtherMessage = INFINITY;
-//             INDEX bestlt;
-//             for (INDEX lt = 0; lt < tailMainMessages.size(); lt++)
-//             {
-//                 REAL currentEdgePot = !isReverse ? mainPairwisePots(edgeIndex, lt, lh) :  mainPairwisePots(edgeIndex, lh, lt);
-//                 REAL currentIncomingMsg = tailMainMessages[lt];
+        std::array<REAL, 2> ComputeMessageValuePair(const std::vector<REAL>& tailMainMessages, const std::vector<REAL>& tailOtherMessages, INDEX edgeIndex, INDEX lh, 
+        const three_dimensional_variable_array<REAL>& mainPairwisePots, const three_dimensional_variable_array<REAL>& otherPairwisePots, bool doConventional, bool isReverse) const
+        {
+            REAL bestMainMessage = INFINITY;
+            REAL bestOtherMessage = INFINITY;
+            INDEX bestlt;
+            for (INDEX lt = 0; lt < tailMainMessages.size(); lt++)
+            {
+                REAL currentEdgePot = !isReverse ? mainPairwisePots(edgeIndex, lt, lh) :  mainPairwisePots(edgeIndex, lh, lt);
+                REAL currentIncomingMsg = tailMainMessages[lt];
 
-//                 if (doConventional)
-//                 {
-//                     REAL msg = currentIncomingMsg + currentEdgePot;
-//                     if (msg < bestMainMessage)
-//                     {
-//                         bestMainMessage = msg;
-//                         bestlt = lt;
-//                     }
-//                 }
+                if (doConventional)
+                {
+                    REAL msg = currentIncomingMsg + currentEdgePot;
+                    if (msg < bestMainMessage)
+                    {
+                        bestMainMessage = msg;
+                        bestlt = lt;
+                    }
+                }
 
-//                 else
-//                 {
-//                     REAL msg = std::max(currentIncomingMsg, currentEdgePot);
-//                     if (msg < bestMainMessage)
-//                     {
-//                         bestMainMessage = msg;
-//                         bestlt = lt;
-//                     }
-//                 }
-//             }
+                else
+                {
+                    REAL msg = std::max(currentIncomingMsg, currentEdgePot);
+                    if (msg < bestMainMessage)
+                    {
+                        bestMainMessage = msg;
+                        bestlt = lt;
+                    }
+                }
+            }
 
-//             if (doConventional)
-//                 bestOtherMessage = std::max(!isReverse ? otherPairwisePots(edgeIndex, bestlt, lh) :  otherPairwisePots(edgeIndex, lh, bestlt), tailOtherMessages[bestlt]);
+            if (doConventional)
+                bestOtherMessage = std::max(!isReverse ? otherPairwisePots(edgeIndex, bestlt, lh) :  otherPairwisePots(edgeIndex, lh, bestlt), tailOtherMessages[bestlt]);
 
-//             else
-//                 bestOtherMessage = (!isReverse ? otherPairwisePots(edgeIndex, bestlt, lh) : otherPairwisePots(edgeIndex, lh, bestlt)) + tailOtherMessages[bestlt];
+            else
+                bestOtherMessage = (!isReverse ? otherPairwisePots(edgeIndex, bestlt, lh) : otherPairwisePots(edgeIndex, lh, bestlt)) + tailOtherMessages[bestlt];
 
-//             return std::array<REAL, 2>({bestMainMessage, bestOtherMessage});
-//         }
+            return std::array<REAL, 2>({bestMainMessage, bestOtherMessage});
+        }
 
-// };
-// REAL max_potential_on_tree_dynamic_prog::MaxPotentialLowerBoundForAllTrees = std::numeric_limits<REAL>::lowest(); //Will need to be re-initialized for a new instance.
+};
+REAL max_potential_on_tree_dynamic_prog::MaxPotentialLowerBoundForAllTrees = std::numeric_limits<REAL>::lowest(); //Will need to be re-initialized for a new instance.
 
 // class unary_max_potential_on_chain_message {
 //     public:
