@@ -33,8 +33,9 @@ int main()
 
     {
         max_potential_on_tree_iterative tree = max_potential_on_tree_iterative(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule);
-        auto lb = tree.LowerBound();
-        test(lb == 1);
+        tree.MaximizePotentialAndComputePrimal();
+        auto best_marginal = tree.max_potential_marginal(tree.max_potential_index());
+        test(best_marginal.MaxCost + best_marginal.LinearCost == 1);
     }
 
     // now add linear potentials
@@ -54,8 +55,9 @@ int main()
 
     {
         max_potential_on_tree_iterative tree = max_potential_on_tree_iterative(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule);
-        auto lb = tree.LowerBound();
-        test(lb == 6);
+        tree.MaximizePotentialAndComputePrimal();
+        auto best_marginal = tree.max_potential_marginal(tree.max_potential_index());
+        test(best_marginal.MaxCost + best_marginal.LinearCost == 6);
     }
 
     LinearPairwisePotentials(0,2,0) = 1.5;
@@ -63,7 +65,8 @@ int main()
 
     {
         max_potential_on_tree_iterative tree = max_potential_on_tree_iterative(MaxPairwisePotentials, LinearPairwisePotentials, numLabels, messagePassingSchedule);
-        auto lb = tree.LowerBound();
-        test(lb == 4);
+        tree.MaximizePotentialAndComputePrimal();
+        auto best_marginal = tree.max_potential_marginal(tree.max_potential_index());
+        test(best_marginal.MaxCost + best_marginal.LinearCost == 4);
     }
 }
