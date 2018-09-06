@@ -18,7 +18,7 @@ void compute_lower_bound_chains(SOLVER& solver, std::string uai_file, REAL expec
     construct_horizon_tracking_problem_on_grid_to_chains(input, solver, solver.template GetProblemConstructor<0>());
     order_nodes_by_label_space_cadinality(solver.template GetProblemConstructor<0>());
     solver.Solve();
-    if (check_lb) test(std::abs(solver.lower_bound() - expected_lb) <= eps);
+    if (check_lb) test(solver.lower_bound(), expected_lb);
 }
 
 template<typename SOLVER>
@@ -47,20 +47,20 @@ void validate_objective_from_solution(SOLVER& solver, std::vector<std::string> s
         current_chain->propagate_primal_through_messages();
     }
     solver_reference.RegisterPrimal();
-    test(std::abs(solver_reference.primal_cost() - solver.primal_cost()) <= eps);
+    test(solver_reference.primal_cost(), solver.primal_cost());
 }
 
 bool TestUAIChains(std::vector<std::string> solverOptions, std::string uaiFile, double expectedLb) 
 {
     using solver_type = Solver<LP_tree_FWMAP<FMC_HORIZON_TRACKING_CHAINS>, StandardVisitor>;
     solver_type solver(solverOptions);
-    compute_lower_bound_chains(solver, uaiFile, expectedLb);
+    compute_lower_bound_chains(solver, uaiFile, expectedLb, false);
     solver.GetLP().write_back_reparametrization();
-    test(std::abs(solver.GetLP().original_factors_lower_bound() - expectedLb) <= eps);
-    test(solver.primal_cost() == std::numeric_limits<REAL>::infinity());
+    test(solver.GetLP().original_factors_lower_bound(), expectedLb);
+    test(solver.primal_cost(), std::numeric_limits<REAL>::infinity());
 
     round_primal_solution(solver);
-    test(std::abs(solver.primal_cost() - expectedLb) <= eps);
+    test(solver.primal_cost(), expectedLb);
 
     // Check if the computed solution actually has the correct objective value:
     validate_objective_from_solution(solver, solverOptions, uaiFile);
@@ -73,7 +73,7 @@ void compute_lower_bound_trees(SOLVER& solver, std::string uai_file, double expe
     construct_horizon_tracking_problem_on_grid_to_trees(input, solver, solver.template GetProblemConstructor<0>());
     order_nodes_by_label_space_cadinality(solver.template GetProblemConstructor<0>());
     solver.Solve();
-    test(std::abs(solver.lower_bound() - expected_lb) <= eps);
+    test(solver.lower_bound(), expected_lb);
 }
 
 // Not expected to work yet:
@@ -83,9 +83,9 @@ bool TestUAITrees(std::vector<std::string> solverOptions, std::string uaiFile, d
     solver_type solver(solverOptions);
     compute_lower_bound_trees(solver, uaiFile, expectedLb);
     solver.GetLP().write_back_reparametrization();
-    test(std::abs(solver.GetLP().original_factors_lower_bound() - expectedLb) <= eps);
+    test(solver.GetLP().original_factors_lower_bound(), expectedLb);
     round_primal_solution(solver);
-    test(std::abs(solver.primal_cost() - expectedLb) <= eps);
+    test(solver.primal_cost(), expectedLb);
 
     // Check if the computed solution actually has the correct objective value:
     validate_objective_from_solution(solver, solverOptions, uaiFile);

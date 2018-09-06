@@ -42,7 +42,7 @@ int main()
         graph.MaximizePotentialAndComputePrimal();
         chain.set_max_potential_index(graph.max_potential_index(0));
         chain.MaximizePotentialAndComputePrimal();
-        test(graph.EvaluatePrimal() + chain.EvaluatePrimal() == 1);
+        test(graph.EvaluatePrimal() + chain.EvaluatePrimal(), 1, 0);
     }
     // now add linear potentials
     LinearPairwisePotentials(0,0,0) = 100;
@@ -74,7 +74,7 @@ int main()
         graph.MaximizePotentialAndComputePrimal();
         chain.set_max_potential_index(graph.max_potential_index(0));
         chain.MaximizePotentialAndComputePrimal();
-        test(graph.EvaluatePrimal() + chain.EvaluatePrimal() == 6);
+        test(graph.EvaluatePrimal() + chain.EvaluatePrimal(), 6, 0);
     }
 
     LinearPairwisePotentials(0,2,0) = 1.5;
@@ -95,6 +95,6 @@ int main()
         graph.MaximizePotentialAndComputePrimal();
         chain.set_max_potential_index(graph.max_potential_index(0));
         chain.MaximizePotentialAndComputePrimal();
-        test(graph.EvaluatePrimal() + chain.EvaluatePrimal() == 7);
+        test(graph.EvaluatePrimal() + chain.EvaluatePrimal(), 7, 0);
     }
 }

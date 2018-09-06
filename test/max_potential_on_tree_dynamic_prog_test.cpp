@@ -43,7 +43,7 @@ int main()
         {
             bestSumMarginal = fmin(currentM[0] + currentM[1], bestSumMarginal);
         }
-        test(bestSumMarginal == 1);
+        test(bestSumMarginal, 1, 0);
     }
 
     // now add linear potentials
@@ -72,7 +72,7 @@ int main()
         {
             bestSumMarginal = fmin(currentM[0] + currentM[1], bestSumMarginal);
         }
-        test(bestSumMarginal == 6);
+        test(bestSumMarginal, 6, 0);
     }
 
     LinearPairwisePotentials(0,2,0) = 1.5;
@@ -89,6 +89,6 @@ int main()
         {
             bestSumMarginal = fmin(currentM[0] + currentM[1], bestSumMarginal);
         }
-        test(bestSumMarginal == 4);
+        test(bestSumMarginal, 4, 0);
     }
 }

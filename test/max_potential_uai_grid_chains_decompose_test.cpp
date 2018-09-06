@@ -18,7 +18,7 @@ int main()
 
     // Test on 5x5 Grid:
     {
-        TestUAIChains(solver_options_medium, grid_uai_input_medium, grid_uai_input_medium_lb);
+        TestUAIChains(solver_options_small, grid_uai_input_medium, grid_uai_input_medium_lb);
     }
 
     // Test on 2x6 Grid having primal issues:
